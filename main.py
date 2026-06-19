@@ -5,12 +5,12 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# আপনার টোকেন
-API_TOKEN = '8669911640:AAENfShmFH-PYDFNxMj0tkBvnV2AEsC-k6o'
+# আপনার নতুন টোকেন
+API_TOKEN = '8669911640:AAEZna8iEkxaRo0GWPclYw2DgJOCTC58UgI'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# লগিং সেটআপ (বট ক্র্যাশ করলে কারণ জানার জন্য)
+# লগিং সেটআপ
 logging.basicConfig(level=logging.INFO)
 
 # ডাটাবেজ কানেকশন (Async)
@@ -55,11 +55,9 @@ async def start(message: types.Message):
 
 @dp.callback_query(F.data == "verify")
 async def verify(call: types.CallbackQuery):
-    # এখানে আপনার মেম্বারশিপ চেক করার লজিক (await দিয়ে)
-    # লক্ষ রাখবেন: বড় বটের জন্য মেম্বারশিপ চেক করার ক্ষেত্রে 'Webhook' বা 'Caching' ব্যবহার করা ভালো
-    await call.answer("✅ Verification process initiated!", show_alert=True)
+    await call.answer("✅ Checking membership...", show_alert=True)
+    # এখানে আপনার মেম্বারশিপ চেক করার লজিক বসাবেন
 
-# মেনু হ্যান্ডলার
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
     async with aiosqlite.connect('bot_data.db') as db:
