@@ -14,7 +14,7 @@ dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
 
-# HTTP সার্ভার (Render পোর্ট সাপোর্ট)
+# HTTP সার্ভার
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -50,7 +50,6 @@ async def start(message: types.Message):
                 await db.execute("INSERT INTO users VALUES (?, ?)", (user_id, 200.0))
                 await db.commit()
     
-    # এখানে শুধু একবার মেসেজ পাঠানো হচ্ছে
     await message.answer("👋 Welcome! Start referring to increase your coin value.", reply_markup=get_main_menu())
 
 @dp.message(F.text == "👤 Account")
@@ -76,11 +75,10 @@ async def extra(message: types.Message):
 
 @dp.message(F.text == "📈 Price Info")
 async def price_info(message: types.Message):
-    await message.answer("📈 **আমাদের কয়েন সম্পর্কে তথ্য:**\n\n"
-                         "আমাদের কয়েনের প্রাইস ০.১ টাকা থেকে শুরু করে ১০০০ টাকা পর্যন্ত হতে পারে। "
-                         "এটি সম্পূর্ণভাবে আমাদের টোটাল মেম্বার ভলিউমের উপর নির্ভর করবে। "
-                         "আপনি যত বেশি রেফার করবেন, কয়েনের রেট তত বাড়বে।\n\n"
-                         "🗓 ১লা জুলাই প্রাইস নির্ধারণ করা হবে এবং সেদিন থেকেই সবাই উইথড্র (Withdraw) করতে পারবেন।")
+    await message.answer("📈 **Price Prediction:**\n\n"
+                         "Our coin price can range from 0.1 BDT to 1000 BDT, depending entirely on the total member volume. "
+                         "The more referrals you bring, the higher the coin rate will be.\n\n"
+                         "🗓 The official price will be set on 1st July, and withdrawals will be enabled from that day.")
 
 async def main():
     await start_server()
