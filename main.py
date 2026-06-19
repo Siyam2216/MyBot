@@ -7,7 +7,6 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-# API Token এবং চ্যানেল ইউজারনেম (চ্যানেল লিঙ্ক থেকে ইউজারনেম বের করা হয়েছে)
 API_TOKEN = os.environ.get('API_TOKEN')
 CHANNEL_1 = "@USDT_GIVEAWAY_ii"
 CHANNEL_2 = "@USDT_GIVEAWAY_iii"
@@ -15,14 +14,12 @@ CHANNEL_2 = "@USDT_GIVEAWAY_iii"
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# ডাটাবেস ইনিশিয়ালাইজেশন
 async def init_db():
     async with aiosqlite.connect('bot_data.db') as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users 
                           (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
         await db.commit()
 
-# সাবস্ক্রিপশন চেক ফাংশন
 async def check_subscription(user_id, channel):
     try:
         member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
@@ -30,7 +27,6 @@ async def check_subscription(user_id, channel):
     except TelegramBadRequest:
         return False
 
-# চ্যানেল জয়েনিং বাটন
 def get_join_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Join Channel 1", url="https://t.me/USDT_GIVEAWAY_ii")],
@@ -38,14 +34,12 @@ def get_join_keyboard():
         [InlineKeyboardButton(text="✅ Verify & Claim", callback_data="verify_join")]
     ])
 
-# মেইন মেনু বাটন
 def get_main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
         [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")]
     ], resize_keyboard=True)
 
-# Start কমান্ড
 @dp.message(Command("start"))
 async def start(message: types.Message):
     args = message.text.split()
@@ -56,34 +50,41 @@ async def start(message: types.Message):
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
                          (user_id, 0.0, referrer_id))
         await db.commit()
-        
     await message.answer("👋 Welcome! Please join our channels to claim your bonus:", reply_markup=get_join_keyboard())
 
-# ভেরিফিকেশন লজিক
+# --- নতুন যুক্ত করা হ্যান্ডলারগুলো ---
+
+@dp.message(F.text == "👤 Account")
+async def account(message: types.Message):
+    async with aiosqlite.connect('bot_data.db') as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,)) as cursor:
+            row = await cursor.fetchone()
+            balance = row[0] if row else 0
+            await message.answer(f"👤 User ID: {message.from_user.id}\n💰 Current Balance: {balance} Coins")
+
+@dp.message(F.text == "👥 Refer & Earn")
+async def refer(message: types.Message):
+    await message.answer(f"🔗 Your referral link: https://t.me/{(await bot.get_me()).username}?start={message.from_user.id}\n\nShare this link to earn 50 coins per referral!")
+
+@dp.message(F.text == "💳 Withdraw")
+async def withdraw(message: types.Message):
+    await message.answer("⏳ Withdrawal is locked. It will open on 1st July.")
+
+@dp.message(F.text == "📈 Price Info")
+async def price(message: types.Message):
+    await message.answer("📈 Price Prediction: 0.1 BDT to 1000 BDT based on total volume.")
+
+# --- ভেরিফিকেশন হ্যান্ডলার ---
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
+    if await check_subscription(callback.from_user.id, CHANNEL_1) and await check_subscription(callback.from_user.id, CHANNEL_2):
         await callback.message.delete()
-        
         async with aiosqlite.connect('bot_data.db') as db:
-            # বোনাস অ্যাড করা
-            await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
-            cursor = await db.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,))
-            row = await cursor.fetchone()
-            referrer_id = row[0] if row else None
-            
-            # রেফারারকে বোনাস দেওয়া
-            if referrer_id:
-                await db.execute("UPDATE users SET balance = balance + 50 WHERE user_id = ?", (referrer_id,))
-                try:
-                    await bot.send_message(referrer_id, "🎉 Congratulations! You received 50 coins bonus from a referral.")
-                except: pass
+            await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (callback.from_user.id,))
             await db.commit()
-            
-        await callback.message.answer("🎉 Congratulations! You received 200 coins as a welcome bonus!", reply_markup=get_main_menu())
+        await callback.message.answer("🎉 Congratulations! Received 200 coins.", reply_markup=get_main_menu())
     else:
-        await callback.answer("❌ You haven't joined both channels yet! Please join first.", show_alert=True)
+        await callback.answer("❌ Join both channels first!", show_alert=True)
 
 async def main():
     await init_db()
