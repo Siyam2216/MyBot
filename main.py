@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import aiosqlite
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# আপনার নতুন টোকেনটি এখানে বসান
-API_TOKEN = '8669911640:AAFWRnMBoKkRQ6KzJZG0D_PE6eId5FZBtvA'
+# Render-এর Environment Variable থেকে টোকেনটি অটোমেটিক নেবে
+API_TOKEN = os.environ.get('API_TOKEN')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -29,15 +30,11 @@ def get_main_menu():
 @dp.message(Command("start"))
 async def start(message: types.Message):
     user_id = message.from_user.id
-    args = message.text.split()
-    
     async with aiosqlite.connect('bot_data.db') as db:
         async with db.execute("SELECT verified FROM users WHERE user_id=?", (user_id,)) as cursor:
             user = await cursor.fetchone()
-            
             if not user:
-                ref = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
-                await db.execute("INSERT INTO users VALUES (?, ?, ?, ?)", (user_id, 0, ref, 0))
+                await db.execute("INSERT INTO users VALUES (?, ?, ?, ?)", (user_id, 0, None, 0))
                 await db.commit()
                 user = (0,)
 
@@ -52,7 +49,7 @@ async def start(message: types.Message):
                 await message.answer("👋 Join channels to claim 200 Coin bonus!", reply_markup=markup)
 
 async def main():
-    # পুরনো ওয়েবহুক বা আটকে থাকা সেশন ক্লিয়ার করতে এটি খুবই জরুরি
+    # কনফ্লিক্ট এরর দূর করার জন্য এটি অত্যন্ত গুরুত্বপূর্ণ
     await bot.delete_webhook(drop_pending_updates=True)
     await init_db()
     await dp.start_polling(bot)
