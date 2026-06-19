@@ -5,14 +5,29 @@ import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiohttp import web
 
-# API Token Render-এর এনভায়রনমেন্ট থেকে নেবে
+# Render-এর Environment Variable থেকে টোকেনটি নেবে
 API_TOKEN = os.environ.get('API_TOKEN')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
+
+# Render-এর পোর্ট টাইম-আউট এড়ানোর জন্য ছোট HTTP সার্ভার
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def start_server():
+    app = web.Application()
+    app.add_routes([web.get('/', handle)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Render সাধারণত ৮০০০ বা পোর্ট ভেরিয়েবল ব্যবহার করে
+    port = int(os.environ.get('PORT', 8000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
 
 async def init_db():
     async with aiosqlite.connect('bot_data.db') as db:
@@ -31,13 +46,11 @@ def get_main_menu():
 async def start(message: types.Message):
     user_id = message.from_user.id
     async with aiosqlite.connect('bot_data.db') as db:
-        # ইউজার যদি নতুন হয় তবে ব্যালেন্স ২০০ দিয়ে ইনসার্ট হবে
         async with db.execute("SELECT verified FROM users WHERE user_id=?", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user:
                 await db.execute("INSERT INTO users VALUES (?, ?, ?, ?)", (user_id, 200.0, None, 0))
                 await db.commit()
-
             await message.answer("👋 Welcome back!", reply_markup=get_main_menu())
 
 @dp.message(F.text == "👤 Account")
@@ -51,7 +64,7 @@ async def account(message: types.Message):
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
     bot_username = "usdtxtrustwallte_ttbbot"
-    await message.answer(f"🔗 Your referral link:\nhttps://t.me/{bot_username}?start={message.from_user.id}\n\nShare this link to earn more!")
+    await message.answer(f"🔗 Your referral link:\nhttps://t.me/{bot_username}?start={message.from_user.id}")
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw(message: types.Message):
@@ -66,6 +79,7 @@ async def price_info(message: types.Message):
     await message.answer("📈 USDT Price: 1 USDT = 120 BDT")
 
 async def main():
+    await start_server() # HTTP সার্ভার স্টার্ট হবে
     await bot.delete_webhook(drop_pending_updates=True)
     await init_db()
     await dp.start_polling(bot)
