@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import aiosqlite
 import os
 from aiogram import Bot, Dispatcher, types, F
@@ -79,13 +78,20 @@ async def price(message: types.Message):
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
     user_id = callback.from_user.id
+    
+    # ডুপ্লিকেট বোনাস প্রিভেনশন
+    async with aiosqlite.connect('bot_data.db') as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] >= 200:
+                await callback.answer("❌ You have already claimed your bonus!", show_alert=True)
+                return
+
     if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
         await callback.message.delete()
         async with aiosqlite.connect('bot_data.db') as db:
-            # ওয়েলকাম বোনাস ২০০ কয়েন
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             
-            # রেফারারকে ১০০ কয়েন বোনাস
             cursor = await db.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             referrer_id = row[0] if row else None
