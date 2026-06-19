@@ -72,7 +72,7 @@ async def withdraw(message: types.Message):
 @dp.message(F.text == "📈 Price Info")
 async def price(message: types.Message):
     await message.answer("📈 **Price Prediction:**\n\n"
-                         "Our coin price can range from 0.1 BDT to 1000 BDT, depending entirely on the total member volume. "
+                         "Our coin price can range from 0.01 USDT to 1.00 USDT, depending entirely on the total member volume. "
                          "The more referrals you bring, the higher the coin rate will be.\n\n"
                          "🗓 The official price will be set on 1st July, and withdrawals will be enabled from that day.")
 
