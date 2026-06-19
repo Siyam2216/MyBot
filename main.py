@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Render-এর Environment Variable থেকে টোকেনটি অটোমেটিক নেবে
+# Render-এর এনভায়রনমেন্ট থেকে টোকেনটি রিড করবে
 API_TOKEN = os.environ.get('API_TOKEN')
 
 bot = Bot(token=API_TOKEN)
@@ -27,6 +27,7 @@ def get_main_menu():
         [KeyboardButton(text="📈 Price Info")]
     ], resize_keyboard=True)
 
+# Start Command Handler
 @dp.message(Command("start"))
 async def start(message: types.Message):
     user_id = message.from_user.id
@@ -48,8 +49,32 @@ async def start(message: types.Message):
                 ])
                 await message.answer("👋 Join channels to claim 200 Coin bonus!", reply_markup=markup)
 
+# Button Handlers
+@dp.message(F.text == "👤 Account")
+async def account(message: types.Message):
+    async with aiosqlite.connect('bot_data.db') as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,)) as cursor:
+            row = await cursor.fetchone()
+            balance = row[0] if row else 0
+            await message.answer(f"💰 Current Balance: {balance} Coin")
+
+@dp.message(F.text == "👥 Refer & Earn")
+async def refer(message: types.Message):
+    await message.answer(f"🔗 Your referral link: https://t.me/your_bot_username?start={message.from_user.id}")
+
+@dp.message(F.text == "💳 Withdraw")
+async def withdraw(message: types.Message):
+    await message.answer("⚠️ Withdrawal is currently closed. Stay tuned!")
+
+@dp.message(F.text == "🎁 Extra Earning")
+async def extra(message: types.Message):
+    await message.answer("🎁 No extra tasks available right now.")
+
+@dp.message(F.text == "📈 Price Info")
+async def price_info(message: types.Message):
+    await message.answer("📈 USDT Price: 1 USDT = 120 BDT (Approx)")
+
 async def main():
-    # কনফ্লিক্ট এরর দূর করার জন্য এটি অত্যন্ত গুরুত্বপূর্ণ
     await bot.delete_webhook(drop_pending_updates=True)
     await init_db()
     await dp.start_polling(bot)
