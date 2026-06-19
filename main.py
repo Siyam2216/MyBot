@@ -4,7 +4,7 @@ import aiosqlite
 import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiohttp import web
 
 API_TOKEN = os.environ.get('API_TOKEN')
@@ -14,7 +14,7 @@ dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
 
-# HTTP সার্ভার (পোর্ট টাইম-আউট এড়ানোর জন্য)
+# HTTP সার্ভার (Render পোর্ট সাপোর্ট)
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -30,7 +30,7 @@ async def start_server():
 async def init_db():
     async with aiosqlite.connect('bot_data.db') as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users 
-                          (user_id INTEGER PRIMARY KEY, balance REAL, referrer_id INTEGER)''')
+                          (user_id INTEGER PRIMARY KEY, balance REAL)''')
         await db.commit()
 
 def get_main_menu():
@@ -47,9 +47,11 @@ async def start(message: types.Message):
         async with db.execute("SELECT balance FROM users WHERE user_id=?", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user:
-                await db.execute("INSERT INTO users VALUES (?, ?, ?)", (user_id, 200.0, None))
+                await db.execute("INSERT INTO users VALUES (?, ?)", (user_id, 200.0))
                 await db.commit()
-            await message.answer("👋 Welcome! Start referring to increase your coin value.", reply_markup=get_main_menu())
+    
+    # এখানে শুধু একবার মেসেজ পাঠানো হচ্ছে
+    await message.answer("👋 Welcome! Start referring to increase your coin value.", reply_markup=get_main_menu())
 
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
@@ -74,9 +76,11 @@ async def extra(message: types.Message):
 
 @dp.message(F.text == "📈 Price Info")
 async def price_info(message: types.Message):
-    await message.answer("📈 **Price Prediction:**\n\n"
-                         "আমাদের কয়েনের প্রাইস ০.১ টাকা থেকে শুরু করে ১০০০ টাকা পর্যন্ত হতে পারে। এটি সম্পূর্ণ আমাদের টোটাল মেম্বার ভলিউমের উপর নির্ভর করবে।\n\n"
-                         "🗓 ১লা জুলাই প্রাইস নির্ধারণ করা হবে এবং সেদিন থেকেই উইথড্র চালু হবে।")
+    await message.answer("📈 **আমাদের কয়েন সম্পর্কে তথ্য:**\n\n"
+                         "আমাদের কয়েনের প্রাইস ০.১ টাকা থেকে শুরু করে ১০০০ টাকা পর্যন্ত হতে পারে। "
+                         "এটি সম্পূর্ণভাবে আমাদের টোটাল মেম্বার ভলিউমের উপর নির্ভর করবে। "
+                         "আপনি যত বেশি রেফার করবেন, কয়েনের রেট তত বাড়বে।\n\n"
+                         "🗓 ১লা জুলাই প্রাইস নির্ধারণ করা হবে এবং সেদিন থেকেই সবাই উইথড্র (Withdraw) করতে পারবেন।")
 
 async def main():
     await start_server()
