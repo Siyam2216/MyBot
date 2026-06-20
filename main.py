@@ -62,11 +62,32 @@ async def account(message: types.Message):
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
     bot_username = (await bot.get_me()).username
-    await message.answer(f"🔗 Your referral link:\nhttps://t.me/{bot_username}?start={message.from_user.id}\n\nShare this link to earn 100 coins per referral!")
+    async with aiosqlite.connect('bot_data.db') as db:
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
+            refer_count = (await cursor.fetchone())[0]
+            
+    await message.answer(f"🔥 **Boost Your Earnings!**\n\n"
+                         f"Share your link and reach 20 referrals to unlock instant withdrawal!\n\n"
+                         f"🔗 **Link:** https://t.me/{bot_username}?start={message.from_user.id}\n\n"
+                         f"👥 **Total Referrals:** {refer_count}\n"
+                         f"💰 **Earn:** 100 Coins per referral!")
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw(message: types.Message):
-    await message.answer("⏳ Withdrawal is locked. It will open on 1st July.")
+    async with aiosqlite.connect('bot_data.db') as db:
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
+            refer_count = (await cursor.fetchone())[0]
+            
+    target = 20
+    remaining = target - refer_count
+    
+    if refer_count >= target:
+        await message.answer("✅ **Withdrawal Open!**\n\nYou have completed 20+ referrals. Please enter your USDT (TRC20) address to proceed.")
+    else:
+        await message.answer(f"🚫 **Withdrawal Locked!**\n\n"
+                             f"You need 20 referrals to unlock withdrawal.\n\n"
+                             f"📊 **Your Progress:** {refer_count}/20\n"
+                             f"🚀 Only {remaining} referrals left! Keep sharing to earn more.")
 
 @dp.message(F.text == "📈 Price Info")
 async def price(message: types.Message):
@@ -78,8 +99,6 @@ async def price(message: types.Message):
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    
-    # ডুপ্লিকেট বোনাস প্রিভেনশন
     async with aiosqlite.connect('bot_data.db') as db:
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
@@ -91,18 +110,14 @@ async def verify(callback: types.CallbackQuery):
         await callback.message.delete()
         async with aiosqlite.connect('bot_data.db') as db:
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
-            
             cursor = await db.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             referrer_id = row[0] if row else None
-            
             if referrer_id:
                 await db.execute("UPDATE users SET balance = balance + 100 WHERE user_id = ?", (referrer_id,))
-                try:
-                    await bot.send_message(referrer_id, "🎉 Congratulations! You received 100 coins bonus from a referral.")
+                try: await bot.send_message(referrer_id, "🎉 Congratulations! You received 100 coins bonus from a referral.")
                 except: pass
             await db.commit()
-            
         await callback.message.answer("🎉 Congratulations! You received 200 coins as a welcome bonus!", reply_markup=get_main_menu())
     else:
         await callback.answer("❌ You haven't joined both channels yet! Please join first.", show_alert=True)
