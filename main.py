@@ -9,12 +9,14 @@ from aiogram.exceptions import TelegramBadRequest
 API_TOKEN = os.environ.get('API_TOKEN')
 CHANNEL_1 = "@USDT_GIVEAWAY_ii"
 CHANNEL_2 = "@USDT_GIVEAWAY_iii"
+# Render-এর ডিস্ক স্টোরেজ পাথ
+DB_PATH = "/var/data/bot_data.db"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 async def init_db():
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users 
                           (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
         await db.commit()
@@ -45,7 +47,7 @@ async def start(message: types.Message):
     referrer_id = int(args[1]) if len(args) > 1 else None
     user_id = message.from_user.id
     
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
                          (user_id, 0.0, referrer_id))
         await db.commit()
@@ -53,7 +55,7 @@ async def start(message: types.Message):
 
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,)) as cursor:
             row = await cursor.fetchone()
             balance = row[0] if row else 0
@@ -62,7 +64,7 @@ async def account(message: types.Message):
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
     bot_username = (await bot.get_me()).username
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
             refer_count = (await cursor.fetchone())[0]
             
@@ -74,7 +76,7 @@ async def refer(message: types.Message):
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw(message: types.Message):
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
             refer_count = (await cursor.fetchone())[0]
             
@@ -99,7 +101,7 @@ async def price(message: types.Message):
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    async with aiosqlite.connect('bot_data.db') as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row and row[0] >= 200:
@@ -108,7 +110,7 @@ async def verify(callback: types.CallbackQuery):
 
     if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
         await callback.message.delete()
-        async with aiosqlite.connect('bot_data.db') as db:
+        async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             cursor = await db.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
