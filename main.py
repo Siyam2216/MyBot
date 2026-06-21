@@ -57,7 +57,7 @@ def get_main_menu():
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
         [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")],
         [KeyboardButton(text="🏆 Leaderboard")]
-    ], resize_keyboard=True, one_time_keyboard=False)
+    ], resize_keyboard=True)
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
@@ -98,7 +98,7 @@ async def account(message: types.Message):
             balance = row[0] if row else 0
             await message.answer(f"👤 **Account Details**\n\n💰 **Balance:** {balance} Coins", parse_mode="Markdown")
 
-@dp.message(F.text == "👥 Refer & Earn")
+@dp.message(F.text.contains("Refer & Earn"))
 async def refer(message: types.Message):
     bot_info = await bot.get_me()
     async with aiosqlite.connect(DB_PATH) as db:
@@ -149,7 +149,6 @@ async def show_leaderboard(message: types.Message):
 
 async def main():
     await init_db()
-    # Poll for messages
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
