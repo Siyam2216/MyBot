@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.exceptions import TelegramBadRequest
 
 # Configuration
@@ -28,10 +28,17 @@ async def init_db():
                           (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
         await db.commit()
 
-async def send_to_sheet(user_id, referrals, method, address):
+# Username সহ আপডেট করা ফাংশন
+async def send_to_sheet(user_id, username, referrals, method, address):
     if not WEB_APP_URL: return
     async with aiohttp.ClientSession() as session:
-        payload = {"user_id": user_id, "referrals": referrals, "method": method, "address": address}
+        payload = {
+            "user_id": user_id, 
+            "username": username, 
+            "referrals": referrals, 
+            "method": method, 
+            "address": address
+        }
         async with session.post(WEB_APP_URL, json=payload) as response:
             return await response.text()
 
@@ -51,27 +58,7 @@ async def start(message: types.Message):
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
                          (user_id, 0.0, referrer_id))
         await db.commit()
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Join Channel 1", url="https://t.me/USDT_GIVEAWAY_ii")],
-        [InlineKeyboardButton(text="Join Channel 2", url="https://t.me/USDT_GIVEAWAY_iii")],
-        [InlineKeyboardButton(text="✅ Verify & Claim", callback_data="verify_join")]
-    ])
-    await message.answer("👋 **Welcome!** Please join our channels and click Verify:", reply_markup=kb, parse_mode="Markdown")
-
-@dp.callback_query(F.data == "verify_join")
-async def verify(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-        row = await cur.fetchone()
-        if row and row[0] >= 200:
-            await callback.answer("❌ You have already claimed your bonus!", show_alert=True)
-            return
-        await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
-        await db.commit()
-    await callback.message.delete()
-    await callback.message.answer("🎉 **Claimed 200 Coins!** Use the menu below:", reply_markup=get_main_menu())
+    await message.answer("👋 Welcome! Use the menu below:", reply_markup=get_main_menu())
 
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
@@ -90,7 +77,6 @@ async def refer(message: types.Message):
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
-    # রেফারেল কন্ডিশন মুছে দেওয়া হয়েছে, এখন সরাসরি মেথড সিলেকশন আসবে
     kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="Binance ID")]], resize_keyboard=True)
     await message.answer("✅ **Select your payment method:**", reply_markup=kb)
     await state.set_state(WithdrawState.waiting_for_method)
@@ -107,7 +93,12 @@ async def process_address(message: types.Message, state: FSMContext):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,))
         refs = (await cur.fetchone())[0]
-    await send_to_sheet(message.from_user.id, refs, data['method'], message.text)
+    
+    # Username সংগ্রহ
+    username = message.from_user.username if message.from_user.username else "No_Username"
+    
+    # শিটে ডাটা পাঠানো
+    await send_to_sheet(message.from_user.id, username, refs, data['method'], message.text)
     await message.answer("✅ **Submitted!** Your payment request is being processed.", reply_markup=get_main_menu())
     await state.clear()
 
