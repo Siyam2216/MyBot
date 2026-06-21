@@ -1,7 +1,7 @@
 import asyncio
 import os
+import aiohttp
 import aiosqlite
-import gspread
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -15,11 +15,10 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-from oauth2client.service_account import ServiceAccountCredentials
-
 # ================= CONFIG =================
 
 API_TOKEN = os.getenv("API_TOKEN")
+WEB_APP_URL = os.getenv("WEB_APP_URL")
 
 if not API_TOKEN:
     raise ValueError("API_TOKEN not found!")
@@ -35,21 +34,6 @@ DB_PATH = "bot_data.db"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-
-# ================= GOOGLE SHEETS =================
-
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-
-creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "credentials.json",
-    scope
-)
-
-client = gspread.authorize(creds)
-sheet = client.open("USDT EARN BOT").sheet1
 
 # ================= STATES =================
 
@@ -146,7 +130,6 @@ async def start(message: types.Message):
                             (uid, referrer)
                         )
 
-                        # Referral Bonus = 100 Coins
                         await db.execute("""
                         UPDATE users
                         SET balance = balance + 100,
@@ -198,10 +181,12 @@ async def verify(callback: types.CallbackQuery):
 
     try:
 
-        # Check channel membership
         for channel in CHANNELS:
 
-            member = await bot.get_chat_member(channel, uid)
+            member = await bot.get_chat_member(
+                channel,
+                uid
+            )
 
             if member.status in ["left", "kicked"]:
                 return await callback.answer(
@@ -224,7 +209,6 @@ async def verify(callback: types.CallbackQuery):
                     show_alert=True
                 )
 
-            # Give signup bonus
             await db.execute("""
             UPDATE users
             SET balance = balance + 200,
@@ -246,7 +230,7 @@ async def verify(callback: types.CallbackQuery):
         print(e)
 
         await callback.answer(
-            "❌ Verification Failed!",
+            "❌ Verification failed!",
             show_alert=True
         )
 
@@ -270,7 +254,9 @@ async def account(message: types.Message):
         row = await cur.fetchone()
 
     if not row:
-        return await message.answer("Account not found.")
+        return await message.answer(
+            "❌ Account not found."
+        )
 
     balance, refs = row
 
@@ -292,7 +278,11 @@ async def refer(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
 
         cur = await db.execute(
-            "SELECT referrals FROM users WHERE user_id=?",
+            """
+            SELECT referrals
+            FROM users
+            WHERE user_id = ?
+            """,
             (message.from_user.id,)
         )
 
@@ -300,21 +290,19 @@ async def refer(message: types.Message):
 
     refs = row[0] if row else 0
 
-    referral_link = (
+    link = (
         f"https://t.me/{me.username}"
         f"?start={message.from_user.id}"
     )
 
     await message.answer(
         f"🔗 Your Referral Link:\n\n"
-        f"{referral_link}\n\n"
-        f"🎁 Earn 100 Coins per referral\n"
+        f"{link}\n\n"
+        f"🎁 Referral Bonus: 100 Coins\n"
         f"👥 Total Referrals: {refs}",
         reply_markup=get_main_menu()
     )
-
-
-# ================= PRICE INFO =================
+    # ================= PRICE INFO =================
 
 @dp.message(F.text == "📈 Price Info")
 async def price_info(message: types.Message):
@@ -362,7 +350,9 @@ async def leaderboard(message: types.Message):
         text,
         parse_mode="Markdown"
     )
-    # ================= WITHDRAW =================
+
+
+# ================= WITHDRAW =================
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw(message: types.Message, state: FSMContext):
@@ -395,9 +385,11 @@ async def withdraw(message: types.Message, state: FSMContext):
 # ================= GET AMOUNT =================
 
 @dp.message(WithdrawState.amount)
-async def get_amount(message: types.Message, state: FSMContext):
+async def get_amount(message: types.Message,
+                     state: FSMContext):
 
     if not message.text.isdigit():
+
         return await message.answer(
             "❌ Please enter numbers only."
         )
@@ -405,6 +397,7 @@ async def get_amount(message: types.Message, state: FSMContext):
     amount = int(message.text)
 
     if amount < 10:
+
         return await message.answer(
             "❌ Minimum withdraw is 10 Coins."
         )
@@ -421,6 +414,7 @@ async def get_amount(message: types.Message, state: FSMContext):
     balance = row[0]
 
     if amount > balance:
+
         return await message.answer(
             "❌ Insufficient Balance."
         )
@@ -441,13 +435,14 @@ async def get_amount(message: types.Message, state: FSMContext):
         reply_markup=kb
     )
 
-    await state.set_state(WithdrawState.method)
-
-
-# ================= GET METHOD =================
+    await state.set_state(
+        WithdrawState.method
+    )
+                         # ================= GET METHOD =================
 
 @dp.message(WithdrawState.method)
-async def get_method(message: types.Message, state: FSMContext):
+async def get_method(message: types.Message,
+                     state: FSMContext):
 
     methods = [
         "USDT BEP20",
@@ -456,11 +451,14 @@ async def get_method(message: types.Message, state: FSMContext):
     ]
 
     if message.text not in methods:
+
         return await message.answer(
             "❌ Please select a valid method."
         )
 
-    await state.update_data(method=message.text)
+    await state.update_data(
+        method=message.text
+    )
 
     if message.text == "Binance ID":
         txt = "Enter your Binance Pay ID:"
@@ -469,13 +467,16 @@ async def get_method(message: types.Message, state: FSMContext):
 
     await message.answer(txt)
 
-    await state.set_state(WithdrawState.address)
+    await state.set_state(
+        WithdrawState.address
+    )
 
 
 # ================= GET ADDRESS =================
 
 @dp.message(WithdrawState.address)
-async def get_address(message: types.Message, state: FSMContext):
+async def get_address(message: types.Message,
+                      state: FSMContext):
 
     data = await state.get_data()
 
@@ -484,21 +485,45 @@ async def get_address(message: types.Message, state: FSMContext):
     address = message.text
 
     # 100 Coins = $0.01
-    usdt_amount = round((amount / 100) * 0.01, 6)
+    usdt_amount = round(
+        (amount / 100) * 0.01,
+        6
+    )
 
-    # Save to Google Sheet
-    sheet.append_row([
-        message.from_user.id,
-        message.from_user.username or "No Username",
-        amount,
-        "",
-        method,
-        address,
-        "Pending",
-        usdt_amount
-    ])
+    payload = {
+        "user_id": message.from_user.id,
+        "username": message.from_user.username
+                      or "No Username",
+        "amount": amount,
+        "method": method,
+        "address": address,
+        "usdt": usdt_amount
+    }
 
-    # Deduct balance
+    try:
+
+        async with aiohttp.ClientSession() as session:
+
+            async with session.post(
+                WEB_APP_URL,
+                json=payload
+            ) as response:
+
+                print(
+                    "Sheet Response:",
+                    await response.text()
+                )
+
+    except Exception as e:
+
+        print("Apps Script Error:", e)
+
+        return await message.answer(
+            "❌ Failed to submit request."
+        )
+
+    # Deduct Balance
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute(
@@ -507,7 +532,10 @@ async def get_address(message: types.Message, state: FSMContext):
             SET balance = balance - ?
             WHERE user_id = ?
             """,
-            (amount, message.from_user.id)
+            (
+                amount,
+                message.from_user.id
+            )
         )
 
         await db.commit()
@@ -517,22 +545,34 @@ async def get_address(message: types.Message, state: FSMContext):
         f"💰 Amount: {amount} Coins\n"
         f"💵 USDT: ${usdt_amount}\n"
         f"🏦 Method: {method}\n\n"
-        "⏳ Status: Pending",
+        f"⏳ Status: Pending",
         reply_markup=get_main_menu()
     )
 
     await state.clear()
 
 
-# ================= CANCEL COMMAND =================
+# ================= CANCEL =================
 
 @dp.message(Command("cancel"))
-async def cancel(message: types.Message, state: FSMContext):
+async def cancel(message: types.Message,
+                 state: FSMContext):
 
     await state.clear()
 
     await message.answer(
-        "❌ Operation cancelled.",
+        "❌ Operation Cancelled.",
+        reply_markup=get_main_menu()
+    )
+
+
+# ================= UNKNOWN MESSAGE =================
+
+@dp.message()
+async def unknown(message: types.Message):
+
+    await message.answer(
+        "Please use the menu buttons below.",
         reply_markup=get_main_menu()
     )
 
@@ -540,6 +580,7 @@ async def cancel(message: types.Message, state: FSMContext):
 # ================= MAIN =================
 
 async def main():
+
     await init_db()
 
     print("✅ Bot Started Successfully")
