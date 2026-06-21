@@ -19,7 +19,7 @@ class WithdrawState(StatesGroup):
     waiting_for_method = State()
     waiting_for_address = State()
 
-# --- Functions ---
+# মেনু বাটনসমূহ
 def get_main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
@@ -32,8 +32,7 @@ def get_back_menu():
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''CREATE TABLE IF NOT EXISTS users 
-                          (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, verified INTEGER DEFAULT 0)''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, verified INTEGER DEFAULT 0)''')
         await db.commit()
 
 async def check_channels(user_id):
@@ -44,13 +43,18 @@ async def check_channels(user_id):
         except: return False
     return True
 
-# --- Handlers ---
+# --- হ্যান্ডলারসমূহ ---
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("👋 Welcome! Please join both channels to get 200 Coins:", 
+    args = message.text.split()
+    if len(args) > 1: # রেফারেল লজিক
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET balance = balance + 50 WHERE user_id = ?", (args[1],))
+            await db.commit()
+    await message.answer("👋 Welcome! Join both channels & click Verify:", 
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Join Channel 1", url="https://t.me/USDT_GIVEAWAY_ii")],
-            [InlineKeyboardButton(text="📢 Join Channel 2", url="https://t.me/USDT_GIVEAWAY_iii")],
+            [InlineKeyboardButton(text="📢 Channel 1", url="https://t.me/USDT_GIVEAWAY_ii")],
+            [InlineKeyboardButton(text="📢 Channel 2", url="https://t.me/USDT_GIVEAWAY_iii")],
             [InlineKeyboardButton(text="✅ Verify Join", callback_data="verify")]
         ]))
 
@@ -64,56 +68,65 @@ async def verify(callback: types.CallbackQuery):
         if await check_channels(callback.from_user.id):
             await db.execute("INSERT OR REPLACE INTO users (user_id, balance, verified) VALUES (?, 200, 1)", (callback.from_user.id,))
             await db.commit()
-            await callback.message.answer("🎉 Congratulations! You received 200 Coins.", reply_markup=get_main_menu())
+            await callback.message.answer("🎉 Congratulations! Received 200 Coins.", reply_markup=get_main_menu())
         else:
             await callback.answer("❌ Join both channels first!", show_alert=True)
+
+@dp.message(F.text == "👥 Refer & Earn")
+async def refer_info(message: types.Message):
+    bot_name = (await bot.get_me()).username
+    link = f"https://t.me/{bot_name}?start={message.from_user.id}"
+    await message.answer(f"🔗 Link: {link}\n💰 Earn 50 Coins/Refer!", reply_markup=get_main_menu())
+    try: # ২য় চ্যানেলে অটো পোস্ট
+        await bot.send_message(chat_id="@USDT_GIVEAWAY_iii", text=f"📢 New Referral Promo! User: @{message.from_user.username or 'N/A'}\nJoin: {link}")
+    except: pass
+
+@dp.message(F.text == "🏆 Leaderboard")
+async def leaderboard(message: types.Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await (await db.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")).fetchall()
+    text = "🏆 Top 5 Users:\n" + "\n".join([f"{i+1}. ID {r[0]}: {r[1]} Coins" for i, r in enumerate(rows)])
+    await message.answer(text, reply_markup=get_main_menu())
+
+# --- উইথড্রল স্টেট হ্যান্ডলার ---
+@dp.message(F.text == "💳 Withdraw")
+async def withdraw_start(message: types.Message, state: FSMContext):
+    await message.answer("Enter Amount (Min 10):", reply_markup=get_back_menu())
+    await state.set_state(WithdrawState.waiting_for_amount)
 
 @dp.message(F.text == "🔙 Back to Main Menu")
 async def back_main(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
 
-@dp.message(F.text == "👤 Account")
-async def account(message: types.Message):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
-        res = await cur.fetchone()
-        bal = res[0] if res else 0
-    await message.answer(f"💰 Balance: {bal} Coins", reply_markup=get_main_menu())
-
-@dp.message(F.text == "💳 Withdraw")
-async def withdraw_start(message: types.Message, state: FSMContext):
-    await message.answer("Enter amount (Min 10):", reply_markup=get_back_menu())
-    await state.set_state(WithdrawState.waiting_for_amount)
-
 @dp.message(WithdrawState.waiting_for_amount)
-async def process_amount(message: types.Message, state: FSMContext):
+async def p_amt(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
     try:
-        amount = float(message.text)
-        if amount < 10: return await message.answer("❌ Min 10 Coins!")
-        await state.update_data(amount=amount)
-        await message.answer("Enter Method (TRC20/BEP20):", reply_markup=get_back_menu())
+        if float(message.text) < 10: raise ValueError
+        await state.update_data(amount=message.text)
+        await message.answer("Method (TRC20/BEP20):", reply_markup=get_back_menu())
         await state.set_state(WithdrawState.waiting_for_method)
-    except: await message.answer("❌ Invalid number!")
+    except: await message.answer("❌ Invalid number or < 10!")
 
 @dp.message(WithdrawState.waiting_for_method)
-async def process_method(message: types.Message, state: FSMContext):
+async def p_met(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
     await state.update_data(method=message.text)
-    await message.answer("Enter Address:", reply_markup=get_back_menu())
+    await message.answer("Address:", reply_markup=get_back_menu())
     await state.set_state(WithdrawState.waiting_for_address)
 
 @dp.message(WithdrawState.waiting_for_address)
-async def process_address(message: types.Message, state: FSMContext):
+async def p_addr(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
     data = await state.get_data()
-    payload = {"user_id": str(message.from_user.id), "username": str(message.from_user.username), "amount": str(data['amount']), "method": str(data['method']), "address": str(message.text)}
-    async with aiohttp.ClientSession() as session:
-        await session.post(WEB_APP_URL, json=payload)
+    async with aiohttp.ClientSession() as s:
+        await s.post(WEB_APP_URL, json={"user_id": message.from_user.id, "amount": data['amount'], "method": data['method'], "address": message.text})
     await message.answer("✅ Request submitted!", reply_markup=get_main_menu())
     await state.clear()
 
 async def main():
     await init_db()
-    print("Bot started...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
