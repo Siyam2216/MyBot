@@ -52,7 +52,7 @@ async def start(message: types.Message):
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
                          (user_id, 0.0, referrer_id))
         await db.commit()
-    await message.answer("👋 Welcome! Please join our channels to claim your bonus:", reply_markup=get_join_keyboard())
+    await message.answer("👋 Welcome! Please join our channels to claim your bonus:", reply_markup=get_join_keyboard(), parse_mode="Markdown")
 
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
@@ -60,7 +60,7 @@ async def account(message: types.Message):
         async with db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,)) as cursor:
             row = await cursor.fetchone()
             balance = row[0] if row else 0
-            await message.answer(f"👤 User ID: {message.from_user.id}\n💰 Current Balance: {balance} Coins")
+            await message.answer(f"👤 User ID: {message.from_user.id}\n💰 Current Balance: {balance} Coins", parse_mode="Markdown")
 
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
@@ -72,7 +72,7 @@ async def refer(message: types.Message):
                          f"Share your link and reach 20 referrals to unlock instant withdrawal!\n\n"
                          f"🔗 **Link:** https://t.me/{bot_username}?start={message.from_user.id}\n\n"
                          f"👥 **Total Referrals:** {refer_count}\n"
-                         f"💰 **Earn:** 100 Coins per referral!")
+                         f"💰 **Earn:** 100 Coins per referral!", parse_mode="Markdown")
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw(message: types.Message):
@@ -82,13 +82,13 @@ async def withdraw(message: types.Message):
     target = 20
     remaining = target - refer_count
     if refer_count >= target:
-        await message.answer("✅ **Withdrawal Open!**\n\nYou have completed 20+ referrals. Please enter your USDT (TRC20) address to proceed.")
+        await message.answer("✅ **Withdrawal Open!**\n\nYou have completed 20+ referrals. Please enter your USDT (TRC20) address to proceed.", parse_mode="Markdown")
     else:
-        await message.answer(f"🚫 **Withdrawal Locked!**\n\nYou need 20 referrals to unlock withdrawal.\n\n📊 **Your Progress:** {refer_count}/20\n🚀 Only {remaining} referrals left!")
+        await message.answer(f"🚫 **Withdrawal Locked!**\n\nYou need 20 referrals to unlock withdrawal.\n\n📊 **Your Progress:** {refer_count}/20\n🚀 Only {remaining} referrals left!", parse_mode="Markdown")
 
 @dp.message(F.text == "📈 Price Info")
 async def price(message: types.Message):
-    await message.answer("📈 **Price Prediction:** 0.01 USDT to 1.00 USDT based on total volume. 🗓 Official price set on 1st July.")
+    await message.answer("📈 **Price Prediction:** 0.01 USDT to 1.00 USDT based on total volume. 🗓 Official price set on 1st July.", parse_mode="Markdown")
 
 @dp.message(F.text == "🏆 Leaderboard")
 async def show_leaderboard(message: types.Message):
@@ -137,12 +137,12 @@ async def verify(callback: types.CallbackQuery):
             referrer_id = row[0] if row else None
             if referrer_id:
                 await db.execute("UPDATE users SET balance = balance + 100 WHERE user_id = ?", (referrer_id,))
-                try: await bot.send_message(referrer_id, "🎉 Congratulations! You received 100 coins bonus from a referral.")
+                try: await bot.send_message(referrer_id, "🎉 Congratulations! You received 100 coins bonus from a referral.", parse_mode="Markdown")
                 except: pass
             await db.commit()
-        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined! Join us: @{(await bot.get_me()).username}")
+        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined! Join us: @{(await bot.get_me()).username}", parse_mode="Markdown")
         except: pass
-        await callback.message.answer("🎉 Congratulations! You received 200 coins as a welcome bonus!", reply_markup=get_main_menu())
+        await callback.message.answer("🎉 Congratulations! You received 200 coins as a welcome bonus!", reply_markup=get_main_menu(), parse_mode="Markdown")
     else:
         await callback.answer("❌ Join both channels first!", show_alert=True)
 
