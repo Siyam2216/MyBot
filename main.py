@@ -90,15 +90,10 @@ async def refer(message: types.Message):
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,))
-        refs = (await cur.fetchone())[0]
-    if refs < 20:
-        await message.answer(f"🚫 Withdrawal Locked! Need 20 refs. Current: {refs}")
-    else:
-        kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="Binance ID")]], resize_keyboard=True)
-        await message.answer("✅ **Select your payment method:**", reply_markup=kb)
-        await state.set_state(WithdrawState.waiting_for_method)
+    # রেফারেল কন্ডিশন মুছে দেওয়া হয়েছে, এখন সরাসরি মেথড সিলেকশন আসবে
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="Binance ID")]], resize_keyboard=True)
+    await message.answer("✅ **Select your payment method:**", reply_markup=kb)
+    await state.set_state(WithdrawState.waiting_for_method)
 
 @dp.message(WithdrawState.waiting_for_method)
 async def process_method(message: types.Message, state: FSMContext):
