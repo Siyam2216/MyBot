@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 # Configuration
 API_TOKEN = os.environ.get('API_TOKEN')
@@ -63,20 +63,20 @@ async def account(message: types.Message):
         cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
         res = await cur.fetchone()
         bal = res[0] if res else 0
-        await message.answer(f"👤 **Account Details**\n🆔 ID: `{message.from_user.id}`\n💰 Balance: {bal} Coins", parse_mode="Markdown", reply_markup=get_back_button())
+        await message.answer(f"👤 Account Details\n🆔 ID: {message.from_user.id}\n💰 Balance: {bal} Coins", reply_markup=get_back_button())
 
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
     bot_info = await bot.get_me()
-    await message.answer(f"🔗 **Referral Link:** `https://t.me/{bot_info.username}?start={message.from_user.id}`\n💰 Earn 100 coins per refer!", parse_mode="Markdown", reply_markup=get_back_button())
+    await message.answer(f"🔗 Referral Link: https://t.me/{bot_info.username}?start={message.from_user.id}\n💰 Earn 100 coins per refer!", reply_markup=get_back_button())
 
 @dp.message(F.text == "📈 Price Info")
 async def price(message: types.Message):
-    await message.answer("📈 **Price Info:** 0.01 USDT - 1.00 USDT. Listing date: July 1st.", reply_markup=get_back_button())
+    await message.answer("📈 Price Info: 0.01 USDT - 1.00 USDT. Listing date: July 1st.", reply_markup=get_back_button())
 
 @dp.message(F.text == "🏆 Leaderboard")
 async def leaderboard(message: types.Message):
-    await message.answer("🏆 **Leaderboard:** [Coming Soon]", reply_markup=get_back_button())
+    await message.answer("🏆 Leaderboard: [Coming Soon]", reply_markup=get_back_button())
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
@@ -85,7 +85,7 @@ async def withdraw_start(message: types.Message, state: FSMContext):
         [KeyboardButton(text="Binance ID")],
         [KeyboardButton(text="🔙 Back to Main Menu")]
     ], resize_keyboard=True)
-    await message.answer("✅ Select payment method:", reply_markup=kb)
+    await message.answer("✅ Select payment method:\n⚠️ Note: Minimum withdrawal is 1000 Coins.", reply_markup=kb)
     await state.set_state(WithdrawState.waiting_for_method)
 
 @dp.message(WithdrawState.waiting_for_method)
@@ -103,7 +103,7 @@ async def process_address(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="✅ Yes, Confirm", callback_data="confirm_withdraw")],
         [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_withdraw")]
     ])
-    await message.answer(f"⚠️ Confirm address:\n`{message.text}`", reply_markup=kb, parse_mode="Markdown")
+    await message.answer(f"⚠️ Confirm address:\n{message.text}", reply_markup=kb)
 
 @dp.callback_query(F.data.in_(["confirm_withdraw", "cancel_withdraw"]))
 async def handle_confirmation(callback: types.CallbackQuery, state: FSMContext):
@@ -112,7 +112,7 @@ async def handle_confirmation(callback: types.CallbackQuery, state: FSMContext):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance - 1000 WHERE user_id = ?", (callback.from_user.id,))
             await db.commit()
-        await send_to_sheet(callback.from_user.id, callback.from_user.username, 0, data['method'], data['address'])
+        await send_to_sheet(callback.from_user.id, callback.from_user.username or "None", 0, data['method'], data['address'])
         await callback.message.edit_text("✅ Submitted! Waiting for approval.")
         await callback.message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
     else:
