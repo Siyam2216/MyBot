@@ -105,11 +105,13 @@ async def start(message: types.Message):
 
         await db.commit()
 
-        if not user:
-            await db.execute(
-                "INSERT INTO users(user_id) VALUES(?)",
-                (uid,)
-            )
+        await db.execute(
+    """
+    INSERT OR IGNORE INTO users(user_id)
+    VALUES(?)
+    """,
+    (uid,)
+)
 
         args = message.text.split()
 
