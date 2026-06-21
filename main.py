@@ -1,262 +1,88 @@
-import asyncio
-import os
-import aiosqlite
-
+import asyncio, aiosqlite, os, aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 
-API_TOKEN = os.getenv("API_TOKEN")
-
-CHANNELS = [
-    "@USDT_GIVEAWAY_ii",
-    "@USDT_GIVEAWAY_iii"
-]
-
+API_TOKEN = os.environ.get('API_TOKEN')
+WEB_APP_URL = os.environ.get('WEB_APP_URL')
+CHANNELS = ["@USDT_GIVEAWAY_ii", "@USDT_GIVEAWAY_iii"]
 DB_PATH = "bot_data.db"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+class WithdrawState(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_method = State()
+    waiting_for_address = State()
 
+# মেনু বাটন
 def get_main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="👤 Account"),
-             KeyboardButton(text="👥 Refer & Earn")],
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
+        [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")],
+        [KeyboardButton(text="🏆 Leaderboard")]
+    ], resize_keyboard=True)
 
-            [KeyboardButton(text="💳 Withdraw"),
-             KeyboardButton(text="📈 Price Info")],
+def get_back_menu():
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 Back to Main Menu")]], resize_keyboard=True)
 
-            [KeyboardButton(text="🏆 Leaderboard")]
-        ],
-        resize_keyboard=True
-    )
+# হ্যান্ডলারসমূহ
+@dp.message(F.text == "💳 Withdraw")
+async def withdraw_start(message: types.Message, state: FSMContext):
+    await message.answer("Enter Amount (Min 10):", reply_markup=get_back_menu())
+    await state.set_state(WithdrawState.waiting_for_amount)
 
+@dp.message(F.text == "📈 Price Info")
+async def price_info(message: types.Message):
+    await message.answer("📈 1 Coin = 0.01 USDT\n🚀 Listing Coming Soon!", reply_markup=get_main_menu())
 
-async def init_db():
+@dp.message(F.text == "🏆 Leaderboard")
+async def leaderboard(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS users(
-                user_id INTEGER PRIMARY KEY,
-                balance REAL DEFAULT 0,
-                verified INTEGER DEFAULT 0,
-                referrals INTEGER DEFAULT 0
-            )
-        """)
+        rows = await (await db.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")).fetchall()
+    text = "🏆 Top 5 Users:\n" + "\n".join([f"{i+1}. ID {r[0]}: {r[1]} Coins" for i, r in enumerate(rows)])
+    await message.answer(text, reply_markup=get_main_menu())
 
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS referrals(
-                user_id INTEGER PRIMARY KEY,
-                referred_by INTEGER
-            )
-        """)
+@dp.message(F.text == "🔙 Back to Main Menu")
+async def back_main(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
 
-        await db.commit()
-
-
-@dp.message(Command("start"))
-async def start(message: types.Message):
-
-    user_id = message.from_user.id
-
-    async with aiosqlite.connect(DB_PATH) as db:
-
-        # User exists?
-        cur = await db.execute(
-            "SELECT user_id FROM users WHERE user_id=?",
-            (user_id,)
-        )
-
-        user = await cur.fetchone()
-
-        if not user:
-            await db.execute(
-                "INSERT INTO users(user_id) VALUES(?)",
-                (user_id,)
-            )
-
-        # Referral system
-        args = message.text.split()
-
-        if len(args) > 1:
-            try:
-                referrer_id = int(args[1])
-
-                if referrer_id != user_id:
-
-                    cur = await db.execute(
-                        "SELECT * FROM referrals WHERE user_id=?",
-                        (user_id,)
-                    )
-
-                    already = await cur.fetchone()
-
-                    if not already:
-
-                        await db.execute(
-                            "INSERT INTO referrals(user_id,referred_by) VALUES(?,?)",
-                            (user_id, referrer_id)
-                        )
-
-                        await db.execute(
-                            """
-                            UPDATE users
-                            SET balance = balance + 50,
-                                referrals = referrals + 1
-                            WHERE user_id = ?
-                            """,
-                            (referrer_id,)
-                        )
-
-            except:
-                pass
-
-        await db.commit()
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="📢 Channel 1",
-                url="https://t.me/USDT_GIVEAWAY_ii"
-            )],
-
-            [InlineKeyboardButton(
-                text="📢 Channel 2",
-                url="https://t.me/USDT_GIVEAWAY_iii"
-            )],
-
-            [InlineKeyboardButton(
-                text="✅ Verify Join",
-                callback_data="verify"
-            )]
-        ]
-    )
-
-    await message.answer(
-        "👋 Welcome!\n\nJoin all channels then click Verify.",
-        reply_markup=keyboard
-    )
-
-
-@dp.callback_query(F.data == "verify")
-async def verify(callback: types.CallbackQuery):
-
-    user_id = callback.from_user.id
-
+# উইথড্র স্টেট হ্যান্ডলারস
+@dp.message(WithdrawState.waiting_for_amount)
+async def process_amount(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
     try:
+        if float(message.text) < 10: raise ValueError
+        await state.update_data(amount=message.text)
+        await message.answer("Method (TRC20/BEP20):", reply_markup=get_back_menu())
+        await state.set_state(WithdrawState.waiting_for_method)
+    except: await message.answer("❌ Invalid amount (Min 10)!")
 
-        # Check channel membership
-        for channel in CHANNELS:
+@dp.message(WithdrawState.waiting_for_method)
+async def process_method(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
+    await state.update_data(method=message.text)
+    await message.answer("Address:", reply_markup=get_back_menu())
+    await state.set_state(WithdrawState.waiting_for_address)
 
-            member = await bot.get_chat_member(
-                channel,
-                user_id
-            )
+@dp.message(WithdrawState.waiting_for_address)
+async def process_address(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Back to Main Menu": return await back_main(message, state)
+    data = await state.get_data()
+    async with aiohttp.ClientSession() as s:
+        await s.post(WEB_APP_URL, json={"user_id": message.from_user.id, "amount": data['amount'], "method": data['method'], "address": message.text})
+    await message.answer("✅ Request submitted!", reply_markup=get_main_menu())
+    await state.clear()
 
-            if member.status in ["left", "kicked"]:
-                return await callback.answer(
-                    "❌ Please join all channels first!",
-                    show_alert=True
-                )
-
-        async with aiosqlite.connect(DB_PATH) as db:
-
-            cur = await db.execute(
-                "SELECT verified FROM users WHERE user_id=?",
-                (user_id,)
-            )
-
-            row = await cur.fetchone()
-
-            if row and row[0] == 1:
-                return await callback.answer(
-                    "⚠️ Reward already claimed!",
-                    show_alert=True
-                )
-
-            await db.execute("""
-                UPDATE users
-                SET balance = balance + 200,
-                    verified = 1
-                WHERE user_id = ?
-            """, (user_id,))
-
-            await db.commit()
-
-        await callback.message.answer(
-            "🎉 Successfully verified!\n\n💰 200 Coins added.",
-            reply_markup=get_main_menu()
-        )
-
-        await callback.answer()
-
-    except Exception as e:
-        print(e)
-
-        await callback.answer(
-            "❌ Verification failed.",
-            show_alert=True
-        )
-
-
-@dp.message(F.text == "👥 Refer & Earn")
-async def refer_info(message: types.Message):
-
-    async with aiosqlite.connect(DB_PATH) as db:
-
-        cur = await db.execute(
-            "SELECT referrals FROM users WHERE user_id=?",
-            (message.from_user.id,)
-        )
-
-        row = await cur.fetchone()
-
-    refs = row[0] if row else 0
-
-    me = await bot.get_me()
-
-    link = f"https://t.me/{me.username}?start={message.from_user.id}"
-
-    await message.answer(
-        f"🔗 Your Referral Link:\n{link}\n\n"
-        f"👥 Total Referrals: {refs}",
-        reply_markup=get_main_menu()
-    )
-
-
-@dp.message(F.text == "👤 Account")
-async def account(message: types.Message):
-
-    async with aiosqlite.connect(DB_PATH) as db:
-
-        cur = await db.execute(
-            "SELECT balance, referrals FROM users WHERE user_id=?",
-            (message.from_user.id,)
-        )
-
-        row = await cur.fetchone()
-
-    if row:
-        balance, refs = row
-
-        await message.answer(
-            f"👤 User ID: {message.from_user.id}\n"
-            f"💰 Balance: {balance} Coins\n"
-            f"👥 Referrals: {refs}"
-        )
-
-
+# বট স্টার্ট করার ফাংশন
 async def main():
     await init_db()
     await dp.start_polling(bot)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
