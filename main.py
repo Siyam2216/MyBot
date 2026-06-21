@@ -477,20 +477,7 @@ async def get_method(message: types.Message,
 @dp.message(WithdrawState.address)
 async def get_address(message: types.Message,
                       state: FSMContext):
-
-                          try:
-    await bot.send_message(
-        "@USDT_GIVEAWAY_iii",
-        f"💸 New Withdrawal Request\n\n"
-        f"👤 User: @{message.from_user.username}\n"
-        f"🆔 ID: {message.from_user.id}\n"
-        f"💰 Amount: {amount} Coins\n"
-        f"💵 USDT: ${usdt_amount}\n"
-        f"🏦 Method: {method}\n"
-        f"⏳ Status: Pending"
-    )
-except:
-    pass
+   
 
     data = await state.get_data()
 
@@ -538,32 +525,36 @@ except:
 
     # Deduct Balance
 
-    async with aiosqlite.connect(DB_PATH) as db:
+  async with aiosqlite.connect(DB_PATH) as db:
 
-        await db.execute(
-            """
-            UPDATE users
-            SET balance = balance - ?
-            WHERE user_id = ?
-            """,
-            (
-                amount,
-                message.from_user.id
-            )
-        )
-
-        await db.commit()
-
-    await message.answer(
-        f"✅ Withdrawal Request Submitted\n\n"
-        f"💰 Amount: {amount} Coins\n"
-        f"💵 USDT: ${usdt_amount}\n"
-        f"🏦 Method: {method}\n\n"
-        f"⏳ Status: Pending",
-        reply_markup=get_main_menu()
+    await db.execute(
+        """
+        UPDATE users
+        SET balance = balance - ?
+        WHERE user_id = ?
+        """,
+        (amount, message.from_user.id)
     )
 
-    await state.clear()
+    await db.commit()
+
+    try:
+        await bot.send_message(
+            "@USDT_GIVEAWAY_iii",
+            f"💸 New Withdrawal Request\n\n"
+            f"👤 User: @{message.from_user.username}\n"
+            f"🆔 ID: {message.from_user.id}\n"
+            f"💰 Amount: {amount} Coins\n"
+            f"💵 USDT: ${usdt_amount}\n"
+            f"🏦 Method: {method}\n"
+            f"⏳ Status: Pending"
+        )
+    except:
+        pass
+
+await message.answer(
+    f"✅ Withdrawal Request Submitted..."
+)
 
 
 # ================= CANCEL =================
