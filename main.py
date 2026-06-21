@@ -21,7 +21,6 @@ DB_PATH = "/var/data/bot_data.db"
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# FSM States
 class WithdrawState(StatesGroup):
     waiting_for_method = State()
     waiting_for_address = State()
@@ -32,40 +31,69 @@ async def init_db():
                           (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
         await db.commit()
 
+async def check_subscription(user_id, channel):
+    try:
+        member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except TelegramBadRequest:
+        return False
+
 async def send_to_sheet(user_id, referrals, method, address):
+    if not WEB_APP_URL: return
     async with aiohttp.ClientSession() as session:
         payload = {"user_id": user_id, "referrals": referrals, "method": method, "address": address}
         async with session.post(WEB_APP_URL, json=payload) as response:
             return await response.text()
 
+def get_join_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Join Channel 1", url="https://t.me/USDT_GIVEAWAY_ii")],
+        [InlineKeyboardButton(text="Join Channel 2", url="https://t.me/USDT_GIVEAWAY_iii")],
+        [InlineKeyboardButton(text="✅ Verify & Claim", callback_data="verify_join")]
+    ])
+
+def get_main_menu():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
+        [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")],
+        [KeyboardButton(text="🏆 Leaderboard")]
+    ], resize_keyboard=True)
+
 @dp.message(Command("start"))
 async def start(message: types.Message):
+    args = message.text.split()
+    referrer_id = int(args[1]) if len(args) > 1 else None
     user_id = message.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
-                         (user_id, 0.0, None))
+                         (user_id, 0.0, referrer_id))
         await db.commit()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Join Channels", url="https://t.me/USDT_GIVEAWAY_ii")],
-        [InlineKeyboardButton(text="✅ Verify", callback_data="verify_join")]
-    ])
-    await message.answer("👋 Welcome! Join channels and click Verify.", reply_markup=kb, parse_mode="Markdown")
+    await message.answer("👋 Welcome! Please join our channels to claim your bonus:", reply_markup=get_join_keyboard(), parse_mode="Markdown")
+
+@dp.callback_query(F.data == "verify_join")
+async def verify(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
+        await callback.message.delete()
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
+            await db.commit()
+        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined!", parse_mode="Markdown")
+        except: pass
+        await callback.message.answer("🎉 Congratulations! You received 200 coins!", reply_markup=get_main_menu(), parse_mode="Markdown")
+    else:
+        await callback.answer("❌ Join both channels first!", show_alert=True)
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,))
         refer_count = (await cursor.fetchone())[0]
-    
     if refer_count < 20:
-        await message.answer(f"🚫 Withdrawal Locked!\nProgress: {refer_count}/20", parse_mode="Markdown")
+        await message.answer(f"🚫 **Withdrawal Locked!**\nYou need 20 referrals. Current: {refer_count}/20", parse_mode="Markdown")
         return
-
-    kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")],
-        [KeyboardButton(text="Binance ID")]
-    ], resize_keyboard=True)
-    await message.answer("✅ Withdrawal Open! Select your payment method:", reply_markup=kb, parse_mode="Markdown")
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="Binance ID")]], resize_keyboard=True)
+    await message.answer("✅ **Withdrawal Open!** Select your payment method:", reply_markup=kb, parse_mode="Markdown")
     await state.set_state(WithdrawState.waiting_for_method)
 
 @dp.message(WithdrawState.waiting_for_method)
@@ -77,19 +105,20 @@ async def process_method(message: types.Message, state: FSMContext):
 @dp.message(WithdrawState.waiting_for_address)
 async def process_address(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    user_id = message.from_user.id
-    method = data['method']
-    address = message.text
-    
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (user_id,))
+        cursor = await db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,))
         refs = (await cursor.fetchone())[0]
-    
-    await send_to_sheet(user_id, refs, method, address)
-    await message.answer("✅ Submitted! Your payment request is now processing.", reply_markup=get_main_menu(), parse_mode="Markdown")
+    await send_to_sheet(message.from_user.id, refs, data['method'], message.text)
+    await message.answer("✅ **Submitted!** Your payment request is being processed.", reply_markup=get_main_menu(), parse_mode="Markdown")
     await state.clear()
 
-# Add your existing Menu, Leaderboard, and Verify handlers here...
+@dp.message(F.text == "🏆 Leaderboard")
+async def show_leaderboard(message: types.Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT referred_by, COUNT(*) as count FROM users WHERE referred_by IS NOT NULL GROUP BY referred_by ORDER BY count DESC LIMIT 10")
+        rows = await cursor.fetchall()
+    text = "🏆 **Top 10 Referrers:**\n\n" + "".join([f"{i+1}. User `{r[0]}` — {r[1]} Refs\n" for i, r in enumerate(rows)])
+    await message.answer(text, parse_mode="Markdown")
 
 async def main():
     await init_db()
