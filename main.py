@@ -27,7 +27,13 @@ async def init_db():
                           (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
         await db.commit()
 
-# মেনু বাটন ফাংশন
+async def send_to_sheet(user_id, username, referrals, method, address):
+    if not WEB_APP_URL: return
+    async with aiohttp.ClientSession() as session:
+        payload = {"user_id": user_id, "username": username, "referrals": referrals, "method": method, "address": address}
+        async with session.post(WEB_APP_URL, json=payload) as response:
+            return await response.text()
+
 def get_main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
@@ -35,11 +41,22 @@ def get_main_menu():
         [KeyboardButton(text="🏆 Leaderboard")]
     ], resize_keyboard=True)
 
-# ব্যাক বাটন ফাংশন
 def get_back_button():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 Back to Main Menu")]], resize_keyboard=True)
 
-# মেনু বাটন হ্যান্ডলারস
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO users (user_id, balance, referred_by) VALUES (?, ?, ?)", 
+                         (message.from_user.id, 0.0, None))
+        await db.commit()
+    await message.answer("👋 Welcome! Use the menu below:", reply_markup=get_main_menu())
+
+@dp.message(F.text == "🔙 Back to Main Menu")
+async def back_to_menu(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
+
 @dp.message(F.text == "👤 Account")
 async def account(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -58,14 +75,9 @@ async def price(message: types.Message):
     await message.answer("📈 **Price Info:** 0.01 USDT - 1.00 USDT. Listing date: July 1st.", reply_markup=get_back_button())
 
 @dp.message(F.text == "🏆 Leaderboard")
-async def show_leaderboard(message: types.Message):
-    await message.answer("🏆 **Top 10 Referrers:**\n[Coming Soon]", reply_markup=get_back_button())
+async def leaderboard(message: types.Message):
+    await message.answer("🏆 **Leaderboard:** [Coming Soon]", reply_markup=get_back_button())
 
-@dp.message(F.text == "🔙 Back to Main Menu")
-async def back_to_menu(message: types.Message):
-    await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
-
-# Withdraw Logic
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
     kb = ReplyKeyboardMarkup(keyboard=[
@@ -78,22 +90,34 @@ async def withdraw_start(message: types.Message, state: FSMContext):
 
 @dp.message(WithdrawState.waiting_for_method)
 async def process_method(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Back to Main Menu":
-        await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
-        await state.clear()
-        return
+    if message.text == "🔙 Back to Main Menu": return await back_to_menu(message, state)
     await state.update_data(method=message.text)
-    await message.answer("Enter your Address/ID (or '🔙 Back to Main Menu' to cancel):", reply_markup=get_back_button())
+    await message.answer("Enter your Address/ID:", reply_markup=get_back_button())
     await state.set_state(WithdrawState.waiting_for_address)
 
 @dp.message(WithdrawState.waiting_for_address)
 async def process_address(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Back to Main Menu":
-        await message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
-        await state.clear()
-        return
-    # ... (বাকি কনফার্মেশন লজিক আগের মতোই থাকবে)
-    await message.answer("✅ Please confirm your request.", reply_markup=get_main_menu())
+    if message.text == "🔙 Back to Main Menu": return await back_to_menu(message, state)
+    await state.update_data(address=message.text)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Yes, Confirm", callback_data="confirm_withdraw")],
+        [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_withdraw")]
+    ])
+    await message.answer(f"⚠️ Confirm address:\n`{message.text}`", reply_markup=kb, parse_mode="Markdown")
+
+@dp.callback_query(F.data.in_(["confirm_withdraw", "cancel_withdraw"]))
+async def handle_confirmation(callback: types.CallbackQuery, state: FSMContext):
+    if callback.data == "confirm_withdraw":
+        data = await state.get_data()
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET balance = balance - 1000 WHERE user_id = ?", (callback.from_user.id,))
+            await db.commit()
+        await send_to_sheet(callback.from_user.id, callback.from_user.username, 0, data['method'], data['address'])
+        await callback.message.edit_text("✅ Submitted! Waiting for approval.")
+        await callback.message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
+    else:
+        await callback.message.edit_text("🚫 Cancelled.")
+        await callback.message.answer("🏠 Main Menu:", reply_markup=get_main_menu())
     await state.clear()
 
 async def main():
