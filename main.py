@@ -73,22 +73,18 @@ async def start(message: types.Message):
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row and row[0] >= 200:
-                await callback.answer("❌ You have already claimed your bonus!", show_alert=True)
+                await callback.answer("❌ You already claimed your bonus!", show_alert=True)
                 return
-
     if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
         await callback.message.delete()
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             await db.commit()
         await callback.message.answer("🎉 Congratulations! You received 200 coins!", reply_markup=get_main_menu(), parse_mode="Markdown")
-        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined!", parse_mode="Markdown")
-        except: pass
     else:
         await callback.answer("❌ Join both channels first!", show_alert=True)
 
@@ -105,7 +101,8 @@ async def refer(message: types.Message):
     bot_info = await bot.get_me()
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
-            refer_count = (await cursor.fetchone())[0]
+            result = await cursor.fetchone()
+            refer_count = result[0] if result else 0
     await message.answer(f"🔥 **Boost Your Earnings!**\n\n🔗 **Link:** https://t.me/{bot_info.username}?start={message.from_user.id}\n👥 **Total Referrals:** {refer_count}", parse_mode="Markdown")
 
 @dp.message(F.text == "💳 Withdraw")
@@ -117,7 +114,7 @@ async def withdraw_start(message: types.Message, state: FSMContext):
         await message.answer(f"🚫 **Withdrawal Locked!**\nYou need 20 referrals. Current: {refer_count}/20", parse_mode="Markdown")
         return
     kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="Binance ID")]], resize_keyboard=True)
-    await message.answer("✅ **Withdrawal Open!** Select your payment method:", reply_markup=kb, parse_mode="Markdown")
+    await message.answer("✅ **Withdrawal Open!** Select your payment method:", reply_markup=kb, resize_keyboard=True)
     await state.set_state(WithdrawState.waiting_for_method)
 
 @dp.message(WithdrawState.waiting_for_method)
