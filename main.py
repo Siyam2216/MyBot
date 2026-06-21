@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 API_TOKEN = os.environ.get('API_TOKEN')
 WEB_APP_URL = os.environ.get('WEB_APP_URL')
@@ -18,6 +18,12 @@ class WithdrawState(StatesGroup):
     waiting_for_method = State()
     waiting_for_address = State()
 
+def get_main_menu():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👤 Account"), KeyboardButton(text="💳 Withdraw")],
+        [KeyboardButton(text="🏆 Leaderboard")]
+    ], resize_keyboard=True)
+
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 100)''')
@@ -30,14 +36,9 @@ async def send_to_sheet(user_id, username, amount, method, address):
         async with session.post(WEB_APP_URL, json=payload) as response:
             return await response.text()
 
-def get_main_menu():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="👤 Account"), KeyboardButton(text="💳 Withdraw")],
-        [KeyboardButton(text="🏆 Leaderboard")]
-    ], resize_keyboard=True)
-
 @dp.message(Command("start"))
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
+    await state.clear()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, ?)", (message.from_user.id, 100.0))
         await db.commit()
@@ -49,34 +50,34 @@ async def account(message: types.Message):
         cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
         res = await cur.fetchone()
         bal = res[0] if res else 0
-    await message.answer(f"💰 Balance: {bal} Coins")
+    await message.answer(f"💰 Balance: {bal} Coins", reply_markup=get_main_menu())
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
-    await message.answer("Enter amount to withdraw (Min 10):")
+    await message.answer("Enter amount (Min 10):", reply_markup=ReplyKeyboardRemove())
     await state.set_state(WithdrawState.waiting_for_amount)
 
 @dp.message(WithdrawState.waiting_for_amount)
 async def process_amount(message: types.Message, state: FSMContext):
     try:
         amount = float(message.text)
-        if amount < 10: return await message.answer("❌ Minimum 10 Coins required!")
+        if amount < 10: return await message.answer("❌ Min 10 Coins required!")
         await state.update_data(amount=amount)
-        await message.answer("Enter USDT Method (TRC20/BEP20):")
+        await message.answer("Enter Method (TRC20/BEP20):")
         await state.set_state(WithdrawState.waiting_for_method)
-    except: await message.answer("❌ Enter a valid number!")
+    except: await message.answer("❌ Invalid number!")
 
 @dp.message(WithdrawState.waiting_for_method)
 async def process_method(message: types.Message, state: FSMContext):
     await state.update_data(method=message.text)
-    await message.answer("Enter your Address:")
+    await message.answer("Enter Address:")
     await state.set_state(WithdrawState.waiting_for_address)
 
 @dp.message(WithdrawState.waiting_for_address)
 async def process_address(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await send_to_sheet(message.from_user.id, message.from_user.username or "None", data['amount'], data['method'], message.text)
-    await message.answer("✅ Withdrawal request submitted!")
+    await message.answer("✅ Request submitted!", reply_markup=get_main_menu())
     await state.clear()
 
 async def main():
