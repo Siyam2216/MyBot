@@ -1,4 +1,5 @@
 import asyncio
+import os
 import aiosqlite
 import gspread
 
@@ -18,7 +19,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # ================= CONFIG =================
 
-API_TOKEN = "YOUR_BOT_TOKEN"
+API_TOKEN = os.getenv("API_TOKEN")
+
+if not API_TOKEN:
+    raise ValueError("API_TOKEN not found!")
 
 CHANNELS = [
     "@USDT_GIVEAWAY_ii",
@@ -45,8 +49,6 @@ creds = ServiceAccountCredentials.from_json_keyfile_name(
 )
 
 client = gspread.authorize(creds)
-
-# Replace with your Google Sheet name
 sheet = client.open("USDT EARN BOT").sheet1
 
 # ================= STATES =================
@@ -128,7 +130,6 @@ async def start(message: types.Message):
             try:
                 referrer = int(args[1])
 
-                # Self referral protection
                 if referrer != uid:
 
                     cur = await db.execute(
@@ -188,7 +189,7 @@ async def start(message: types.Message):
         "Join all channels and click Verify.",
         reply_markup=keyboard
     )
-# ================= VERIFY CHANNEL =================
+    # ================= VERIFY CHANNEL =================
 
 @dp.callback_query(F.data == "verify")
 async def verify(callback: types.CallbackQuery):
@@ -197,7 +198,7 @@ async def verify(callback: types.CallbackQuery):
 
     try:
 
-        # Check all channels
+        # Check channel membership
         for channel in CHANNELS:
 
             member = await bot.get_chat_member(channel, uid)
@@ -223,6 +224,7 @@ async def verify(callback: types.CallbackQuery):
                     show_alert=True
                 )
 
+            # Give signup bonus
             await db.execute("""
             UPDATE users
             SET balance = balance + 200,
@@ -260,25 +262,24 @@ async def account(message: types.Message):
             """
             SELECT balance, referrals
             FROM users
-            WHERE user_id=?
+            WHERE user_id = ?
             """,
             (message.from_user.id,)
         )
 
         row = await cur.fetchone()
 
-    if row:
+    if not row:
+        return await message.answer("Account not found.")
 
-        balance, refs = row
+    balance, refs = row
 
-        await message.answer(
-            f"👤 User ID: {message.from_user.id}\n\n"
-            f"💰 Balance: {balance} Coins\n"
-            f"👥 Referrals: {refs}"
-        )
-
-    else:
-        await message.answer("Account not found.")
+    await message.answer(
+        f"👤 User ID: {message.from_user.id}\n\n"
+        f"💰 Balance: {balance} Coins\n"
+        f"👥 Total Referrals: {refs}",
+        reply_markup=get_main_menu()
+    )
 
 
 # ================= REFER & EARN =================
@@ -299,13 +300,17 @@ async def refer(message: types.Message):
 
     refs = row[0] if row else 0
 
-    link = f"https://t.me/{me.username}?start={message.from_user.id}"
+    referral_link = (
+        f"https://t.me/{me.username}"
+        f"?start={message.from_user.id}"
+    )
 
     await message.answer(
         f"🔗 Your Referral Link:\n\n"
-        f"{link}\n\n"
+        f"{referral_link}\n\n"
         f"🎁 Earn 100 Coins per referral\n"
-        f"👥 Total Referrals: {refs}"
+        f"👥 Total Referrals: {refs}",
+        reply_markup=get_main_menu()
     )
 
 
@@ -318,7 +323,8 @@ async def price_info(message: types.Message):
         "📈 Coin Price Information\n\n"
         "💵 100 Coins = $0.01\n\n"
         "💳 Minimum Withdraw: 10 Coins\n\n"
-        "⚠️ Rates may change anytime."
+        "⚠️ Rates may change anytime.",
+        reply_markup=get_main_menu()
     )
 
 
@@ -526,7 +532,7 @@ async def cancel(message: types.Message, state: FSMContext):
     await state.clear()
 
     await message.answer(
-        "❌ Withdrawal cancelled.",
+        "❌ Operation cancelled.",
         reply_markup=get_main_menu()
     )
 
