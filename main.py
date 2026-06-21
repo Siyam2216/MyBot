@@ -547,39 +547,6 @@ async def get_address(message: types.Message,
 
     await state.clear()
 
-    # Deduct Balance
-
-  async with aiosqlite.connect(DB_PATH) as db:
-
-    await db.execute(
-        """
-        UPDATE users
-        SET balance = balance - ?
-        WHERE user_id = ?
-        """,
-        (amount, message.from_user.id)
-    )
-
-    await db.commit()
-
-    try:
-        await bot.send_message(
-            "@USDT_GIVEAWAY_iii",
-            f"💸 New Withdrawal Request\n\n"
-            f"👤 User: @{message.from_user.username}\n"
-            f"🆔 ID: {message.from_user.id}\n"
-            f"💰 Amount: {amount} Coins\n"
-            f"💵 USDT: ${usdt_amount}\n"
-            f"🏦 Method: {method}\n"
-            f"⏳ Status: Pending"
-        )
-    except:
-        pass
-
-await message.answer(
-    f"✅ Withdrawal Request Submitted..."
-)
-
 
 # ================= CANCEL =================
 
