@@ -4,10 +4,11 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 
 API_TOKEN = os.environ.get('API_TOKEN')
 WEB_APP_URL = os.environ.get('WEB_APP_URL')
+CHANNEL_ID = "@your_channel_username" # আপনার চ্যানেলের ইউজারনেম দিন
 DB_PATH = "bot_data.db"
 
 bot = Bot(token=API_TOKEN)
@@ -20,7 +21,8 @@ class WithdrawState(StatesGroup):
 
 def get_main_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="👤 Account"), KeyboardButton(text="💳 Withdraw")],
+        [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
+        [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")],
         [KeyboardButton(text="🏆 Leaderboard")]
     ], resize_keyboard=True)
 
@@ -29,16 +31,19 @@ async def init_db():
         await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 100)''')
         await db.commit()
 
-async def send_to_sheet(user_id, username, amount, method, address):
-    if not WEB_APP_URL: return
-    payload = {"user_id": str(user_id), "username": str(username), "amount": str(amount), "method": str(method), "address": str(address)}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(WEB_APP_URL, json=payload) as response:
-            return await response.text()
+async def is_subscribed(user_id):
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except: return False
 
 @dp.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
+    if not await is_subscribed(message.from_user.id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Join Channel", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")]])
+        await message.answer("❌ Please join our channel first!", reply_markup=kb)
+        return
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, ?)", (message.from_user.id, 100.0))
         await db.commit()
@@ -48,8 +53,7 @@ async def start(message: types.Message, state: FSMContext):
 async def account(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
-        res = await cur.fetchone()
-        bal = res[0] if res else 0
+        bal = (await cur.fetchone())[0]
     await message.answer(f"💰 Balance: {bal} Coins", reply_markup=get_main_menu())
 
 @dp.message(F.text == "💳 Withdraw")
@@ -61,7 +65,7 @@ async def withdraw_start(message: types.Message, state: FSMContext):
 async def process_amount(message: types.Message, state: FSMContext):
     try:
         amount = float(message.text)
-        if amount < 10: return await message.answer("❌ Min 10 Coins required!")
+        if amount < 10: return await message.answer("❌ Min 10!")
         await state.update_data(amount=amount)
         await message.answer("Enter Method (TRC20/BEP20):")
         await state.set_state(WithdrawState.waiting_for_method)
@@ -76,7 +80,9 @@ async def process_method(message: types.Message, state: FSMContext):
 @dp.message(WithdrawState.waiting_for_address)
 async def process_address(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    await send_to_sheet(message.from_user.id, message.from_user.username or "None", data['amount'], data['method'], message.text)
+    payload = {"user_id": str(message.from_user.id), "username": str(message.from_user.username), "amount": str(data['amount']), "method": str(data['method']), "address": str(message.text)}
+    async with aiohttp.ClientSession() as session:
+        await session.post(WEB_APP_URL, json=payload)
     await message.answer("✅ Request submitted!", reply_markup=get_main_menu())
     await state.clear()
 
