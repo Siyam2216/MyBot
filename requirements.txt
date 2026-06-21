@@ -1,4 +1,3 @@
-aiogram
+aiogram==3.20.0
+aiohttp
 aiosqlite
-gspread
-oauth2client
