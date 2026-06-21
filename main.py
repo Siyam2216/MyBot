@@ -477,7 +477,6 @@ async def get_method(message: types.Message,
 @dp.message(WithdrawState.address)
 async def get_address(message: types.Message,
                       state: FSMContext):
-   
 
     data = await state.get_data()
 
@@ -485,7 +484,6 @@ async def get_address(message: types.Message,
     method = data["method"]
     address = message.text
 
-    # 100 Coins = $0.01
     usdt_amount = round(
         (amount / 100) * 0.01,
         6
@@ -493,8 +491,7 @@ async def get_address(message: types.Message,
 
     payload = {
         "user_id": message.from_user.id,
-        "username": message.from_user.username
-                      or "No Username",
+        "username": message.from_user.username or "No Username",
         "amount": amount,
         "method": method,
         "address": address,
@@ -502,26 +499,53 @@ async def get_address(message: types.Message,
     }
 
     try:
-
         async with aiohttp.ClientSession() as session:
-
             async with session.post(
                 WEB_APP_URL,
                 json=payload
             ) as response:
-
-                print(
-                    "Sheet Response:",
-                    await response.text()
-                )
+                print(await response.text())
 
     except Exception as e:
-
         print("Apps Script Error:", e)
 
-        return await message.answer(
-            "❌ Failed to submit request."
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        await db.execute(
+            """
+            UPDATE users
+            SET balance = balance - ?
+            WHERE user_id = ?
+            """,
+            (amount, message.from_user.id)
         )
+
+        await db.commit()
+
+    try:
+        await bot.send_message(
+            "@USDT_GIVEAWAY_iii",
+            f"💸 New Withdrawal Request\n\n"
+            f"👤 User: @{message.from_user.username}\n"
+            f"🆔 ID: {message.from_user.id}\n"
+            f"💰 Amount: {amount} Coins\n"
+            f"💵 USDT: ${usdt_amount}\n"
+            f"🏦 Method: {method}\n"
+            f"⏳ Status: Pending"
+        )
+    except:
+        pass
+
+    await message.answer(
+        f"✅ Withdrawal Request Submitted\n\n"
+        f"💰 Amount: {amount} Coins\n"
+        f"💵 USDT: ${usdt_amount}\n"
+        f"🏦 Method: {method}\n\n"
+        "⏳ Status: Pending",
+        reply_markup=get_main_menu()
+    )
+
+    await state.clear()
 
     # Deduct Balance
 
