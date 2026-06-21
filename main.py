@@ -13,7 +13,6 @@ from aiogram.exceptions import TelegramBadRequest
 # Configuration
 API_TOKEN = os.environ.get('API_TOKEN')
 WEB_APP_URL = os.environ.get('WEB_APP_URL')
-CHANNEL_ID = "@USDT_GIVEAWAY_iii"
 DB_PATH = "/var/data/bot_data.db"
 
 bot = Bot(token=API_TOKEN)
@@ -36,7 +35,6 @@ async def send_to_sheet(user_id, referrals, method, address):
         async with session.post(WEB_APP_URL, json=payload) as response:
             return await response.text()
 
-# টাইপিং বারের নিচে বাটন মেনু
 def get_main_menu():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
@@ -63,10 +61,16 @@ async def start(message: types.Message):
 
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
-    await callback.message.delete()
+    user_id = callback.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (callback.from_user.id,))
+        cur = await db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        if row and row[0] >= 200:
+            await callback.answer("❌ You have already claimed your bonus!", show_alert=True)
+            return
+        await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
         await db.commit()
+    await callback.message.delete()
     await callback.message.answer("🎉 **Claimed 200 Coins!** Use the menu below:", reply_markup=get_main_menu())
 
 @dp.message(F.text == "👤 Account")
