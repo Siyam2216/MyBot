@@ -78,11 +78,25 @@ async def verify(callback: types.CallbackQuery):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             await db.commit()
-        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined!", parse_mode="Markdown")
-        except: pass
         await callback.message.answer("🎉 Congratulations! You received 200 coins!", reply_markup=get_main_menu(), parse_mode="Markdown")
     else:
         await callback.answer("❌ Join both channels first!", show_alert=True)
+
+@dp.message(F.text == "👤 Account")
+async def account(message: types.Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,)) as cursor:
+            row = await cursor.fetchone()
+            balance = row[0] if row else 0
+            await message.answer(f"👤 **Account Details**\n\n💰 **Balance:** {balance} Coins", parse_mode="Markdown")
+
+@dp.message(F.text == "👥 Refer & Earn")
+async def refer(message: types.Message):
+    bot_info = await bot.get_me()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (message.from_user.id,)) as cursor:
+            refer_count = (await cursor.fetchone())[0]
+    await message.answer(f"🔥 **Boost Your Earnings!**\n\n🔗 **Link:** https://t.me/{bot_info.username}?start={message.from_user.id}\n👥 **Total Referrals:** {refer_count}", parse_mode="Markdown")
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
@@ -111,6 +125,10 @@ async def process_address(message: types.Message, state: FSMContext):
     await send_to_sheet(message.from_user.id, refs, data['method'], message.text)
     await message.answer("✅ **Submitted!** Your payment request is being processed.", reply_markup=get_main_menu(), parse_mode="Markdown")
     await state.clear()
+
+@dp.message(F.text == "📈 Price Info")
+async def price(message: types.Message):
+    await message.answer("📈 **Price Prediction:** 0.01 USDT to 1.00 USDT based on total volume. 🗓 Official price set on 1st July.", parse_mode="Markdown")
 
 @dp.message(F.text == "🏆 Leaderboard")
 async def show_leaderboard(message: types.Message):
