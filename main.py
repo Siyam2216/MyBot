@@ -95,12 +95,15 @@ async def start(message: types.Message):
 
     async with aiosqlite.connect(DB_PATH) as db:
 
-        cur = await db.execute(
-            "SELECT user_id FROM users WHERE user_id=?",
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO users(user_id)
+            VALUES(?)
+            """,
             (uid,)
         )
 
-        user = await cur.fetchone()
+        await db.commit()
 
         if not user:
             await db.execute(
