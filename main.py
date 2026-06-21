@@ -1,10 +1,12 @@
 import asyncio
-import os
 import aiosqlite
+import gspread
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -12,12 +14,11 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
+from oauth2client.service_account import ServiceAccountCredentials
+
 # ================= CONFIG =================
 
-API_TOKEN = os.getenv("API_TOKEN")
-
-if not API_TOKEN:
-    raise ValueError("API_TOKEN not found!")
+API_TOKEN = "YOUR_BOT_TOKEN"
 
 CHANNELS = [
     "@USDT_GIVEAWAY_ii",
@@ -30,6 +31,30 @@ DB_PATH = "bot_data.db"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+# ================= GOOGLE SHEETS =================
+
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+
+creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "credentials.json",
+    scope
+)
+
+client = gspread.authorize(creds)
+
+# Replace with your Google Sheet name
+sheet = client.open("USDT EARN BOT").sheet1
+
+# ================= STATES =================
+
+class WithdrawState(StatesGroup):
+    amount = State()
+    method = State()
+    address = State()
 
 # ================= MENU =================
 
@@ -54,12 +79,13 @@ def get_main_menu():
 # ================= DATABASE =================
 
 async def init_db():
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute("""
         CREATE TABLE IF NOT EXISTS users(
             user_id INTEGER PRIMARY KEY,
-            balance REAL DEFAULT 0,
+            balance INTEGER DEFAULT 0,
             verified INTEGER DEFAULT 0,
             referrals INTEGER DEFAULT 0
         )
@@ -79,13 +105,13 @@ async def init_db():
 @dp.message(Command("start"))
 async def start(message: types.Message):
 
-    user_id = message.from_user.id
+    uid = message.from_user.id
 
     async with aiosqlite.connect(DB_PATH) as db:
 
         cur = await db.execute(
             "SELECT user_id FROM users WHERE user_id=?",
-            (user_id,)
+            (uid,)
         )
 
         user = await cur.fetchone()
@@ -93,37 +119,39 @@ async def start(message: types.Message):
         if not user:
             await db.execute(
                 "INSERT INTO users(user_id) VALUES(?)",
-                (user_id,)
+                (uid,)
             )
 
         args = message.text.split()
 
         if len(args) > 1:
             try:
-                referrer_id = int(args[1])
+                referrer = int(args[1])
 
-                if referrer_id != user_id:
+                # Self referral protection
+                if referrer != uid:
 
                     cur = await db.execute(
                         "SELECT * FROM referrals WHERE user_id=?",
-                        (user_id,)
+                        (uid,)
                     )
 
-                    already = await cur.fetchone()
+                    exists = await cur.fetchone()
 
-                    if not already:
+                    if not exists:
 
                         await db.execute(
-                            "INSERT INTO referrals(user_id,referred_by) VALUES(?,?)",
-                            (user_id, referrer_id)
+                            "INSERT INTO referrals VALUES (?, ?)",
+                            (uid, referrer)
                         )
 
+                        # Referral Bonus = 100 Coins
                         await db.execute("""
-                            UPDATE users
-                            SET balance = balance + 50,
-                                referrals = referrals + 1
-                            WHERE user_id = ?
-                        """, (referrer_id,))
+                        UPDATE users
+                        SET balance = balance + 100,
+                            referrals = referrals + 1
+                        WHERE user_id = ?
+                        """, (referrer,))
 
             except:
                 pass
@@ -155,29 +183,28 @@ async def start(message: types.Message):
 
     await message.answer(
         "👋 Welcome!\n\n"
-        "Join both channels and click Verify.",
+        "🎁 Signup Bonus: 200 Coins\n"
+        "🎁 Referral Bonus: 100 Coins\n\n"
+        "Join all channels and click Verify.",
         reply_markup=keyboard
     )
-
-# ================= VERIFY =================
+# ================= VERIFY CHANNEL =================
 
 @dp.callback_query(F.data == "verify")
 async def verify(callback: types.CallbackQuery):
 
-    user_id = callback.from_user.id
+    uid = callback.from_user.id
 
     try:
 
+        # Check all channels
         for channel in CHANNELS:
 
-            member = await bot.get_chat_member(
-                channel,
-                user_id
-            )
+            member = await bot.get_chat_member(channel, uid)
 
             if member.status in ["left", "kicked"]:
                 return await callback.answer(
-                    "❌ Join all channels first!",
+                    "❌ Please join all channels first!",
                     show_alert=True
                 )
 
@@ -185,29 +212,29 @@ async def verify(callback: types.CallbackQuery):
 
             cur = await db.execute(
                 "SELECT verified FROM users WHERE user_id=?",
-                (user_id,)
+                (uid,)
             )
 
             row = await cur.fetchone()
 
             if row and row[0] == 1:
                 return await callback.answer(
-                    "⚠️ Already claimed!",
+                    "⚠️ Bonus already claimed!",
                     show_alert=True
                 )
 
             await db.execute("""
-                UPDATE users
-                SET balance = balance + 200,
-                    verified = 1
-                WHERE user_id = ?
-            """, (user_id,))
+            UPDATE users
+            SET balance = balance + 200,
+                verified = 1
+            WHERE user_id = ?
+            """, (uid,))
 
             await db.commit()
 
         await callback.message.answer(
             "🎉 Congratulations!\n\n"
-            "You received 200 Coins.",
+            "💰 200 Coins added successfully.",
             reply_markup=get_main_menu()
         )
 
@@ -217,9 +244,10 @@ async def verify(callback: types.CallbackQuery):
         print(e)
 
         await callback.answer(
-            "❌ Verification failed!",
+            "❌ Verification Failed!",
             show_alert=True
         )
+
 
 # ================= ACCOUNT =================
 
@@ -229,7 +257,11 @@ async def account(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
 
         cur = await db.execute(
-            "SELECT balance, referrals FROM users WHERE user_id=?",
+            """
+            SELECT balance, referrals
+            FROM users
+            WHERE user_id=?
+            """,
             (message.from_user.id,)
         )
 
@@ -245,10 +277,16 @@ async def account(message: types.Message):
             f"👥 Referrals: {refs}"
         )
 
-# ================= REFER =================
+    else:
+        await message.answer("Account not found.")
+
+
+# ================= REFER & EARN =================
 
 @dp.message(F.text == "👥 Refer & Earn")
 async def refer(message: types.Message):
+
+    me = await bot.get_me()
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -261,20 +299,67 @@ async def refer(message: types.Message):
 
     refs = row[0] if row else 0
 
-    me = await bot.get_me()
-
     link = f"https://t.me/{me.username}?start={message.from_user.id}"
 
     await message.answer(
         f"🔗 Your Referral Link:\n\n"
         f"{link}\n\n"
+        f"🎁 Earn 100 Coins per referral\n"
         f"👥 Total Referrals: {refs}"
     )
 
-# ================= WITHDRAW =================
+
+# ================= PRICE INFO =================
+
+@dp.message(F.text == "📈 Price Info")
+async def price_info(message: types.Message):
+
+    await message.answer(
+        "📈 Coin Price Information\n\n"
+        "💵 100 Coins = $0.01\n\n"
+        "💳 Minimum Withdraw: 10 Coins\n\n"
+        "⚠️ Rates may change anytime."
+    )
+
+
+# ================= LEADERBOARD =================
+
+@dp.message(F.text == "🏆 Leaderboard")
+async def leaderboard(message: types.Message):
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cur = await db.execute("""
+        SELECT user_id, referrals
+        FROM users
+        ORDER BY referrals DESC
+        LIMIT 10
+        """)
+
+        rows = await cur.fetchall()
+
+    if not rows:
+        return await message.answer(
+            "No leaderboard data found."
+        )
+
+    text = "🏆 Top Referrers\n\n"
+
+    for i, row in enumerate(rows, start=1):
+
+        text += (
+            f"{i}. ID: `{row[0]}` "
+            f"- {row[1]} referrals\n"
+        )
+
+    await message.answer(
+        text,
+        parse_mode="Markdown"
+    )
+    # ================= WITHDRAW =================
 
 @dp.message(F.text == "💳 Withdraw")
-async def withdraw(message: types.Message):
+async def withdraw(message: types.Message, state: FSMContext):
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -287,70 +372,174 @@ async def withdraw(message: types.Message):
 
     balance = row[0] if row else 0
 
-    if balance < 1000:
+    if balance < 10:
         return await message.answer(
-            f"❌ Minimum withdrawal is 1000 Coins.\n\n"
-            f"Your Balance: {balance} Coins"
+            f"❌ Minimum Withdraw: 10 Coins\n\n"
+            f"💰 Your Balance: {balance} Coins"
         )
 
     await message.answer(
-        "💳 Withdrawal Available\n\n"
-        "Minimum Withdraw: 1000 Coins\n"
-        "100 Coins = 1 USDT\n\n"
-        "Contact Admin: @admin_username"
+        f"💰 Your Balance: {balance} Coins\n\n"
+        "Enter withdrawal amount:"
     )
 
-# ================= PRICE =================
+    await state.set_state(WithdrawState.amount)
 
-@dp.message(F.text == "📈 Price Info")
-async def price(message: types.Message):
 
-    await message.answer(
-        "📈 Coin Price Information\n\n"
-        "100 Coins = 1 USDT\n"
-        "500 Coins = 5 USDT\n"
-        "1000 Coins = 10 USDT\n\n"
-        "⚠️ Price may change anytime."
-    )
+# ================= GET AMOUNT =================
 
-# ================= LEADERBOARD =================
+@dp.message(WithdrawState.amount)
+async def get_amount(message: types.Message, state: FSMContext):
 
-@dp.message(F.text == "🏆 Leaderboard")
-async def leaderboard(message: types.Message):
+    if not message.text.isdigit():
+        return await message.answer(
+            "❌ Please enter numbers only."
+        )
+
+    amount = int(message.text)
+
+    if amount < 10:
+        return await message.answer(
+            "❌ Minimum withdraw is 10 Coins."
+        )
 
     async with aiosqlite.connect(DB_PATH) as db:
 
-        cur = await db.execute("""
-            SELECT user_id, referrals
-            FROM users
-            ORDER BY referrals DESC
-            LIMIT 10
-        """)
-
-        rows = await cur.fetchall()
-
-    if not rows:
-        return await message.answer("No leaderboard data found.")
-
-    text = "🏆 Top Referrers\n\n"
-
-    for i, row in enumerate(rows, start=1):
-        text += (
-            f"{i}. User ID: `{row[0]}` "
-            f"- {row[1]} referrals\n"
+        cur = await db.execute(
+            "SELECT balance FROM users WHERE user_id=?",
+            (message.from_user.id,)
         )
 
-    await message.answer(
-        text,
-        parse_mode="Markdown"
+        row = await cur.fetchone()
+
+    balance = row[0]
+
+    if amount > balance:
+        return await message.answer(
+            "❌ Insufficient Balance."
+        )
+
+    await state.update_data(amount=amount)
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="USDT BEP20")],
+            [KeyboardButton(text="USDT TRC20")],
+            [KeyboardButton(text="Binance ID")]
+        ],
+        resize_keyboard=True
     )
+
+    await message.answer(
+        "Choose withdrawal method:",
+        reply_markup=kb
+    )
+
+    await state.set_state(WithdrawState.method)
+
+
+# ================= GET METHOD =================
+
+@dp.message(WithdrawState.method)
+async def get_method(message: types.Message, state: FSMContext):
+
+    methods = [
+        "USDT BEP20",
+        "USDT TRC20",
+        "Binance ID"
+    ]
+
+    if message.text not in methods:
+        return await message.answer(
+            "❌ Please select a valid method."
+        )
+
+    await state.update_data(method=message.text)
+
+    if message.text == "Binance ID":
+        txt = "Enter your Binance Pay ID:"
+    else:
+        txt = "Send your wallet address:"
+
+    await message.answer(txt)
+
+    await state.set_state(WithdrawState.address)
+
+
+# ================= GET ADDRESS =================
+
+@dp.message(WithdrawState.address)
+async def get_address(message: types.Message, state: FSMContext):
+
+    data = await state.get_data()
+
+    amount = data["amount"]
+    method = data["method"]
+    address = message.text
+
+    # 100 Coins = $0.01
+    usdt_amount = round((amount / 100) * 0.01, 6)
+
+    # Save to Google Sheet
+    sheet.append_row([
+        message.from_user.id,
+        message.from_user.username or "No Username",
+        amount,
+        "",
+        method,
+        address,
+        "Pending",
+        usdt_amount
+    ])
+
+    # Deduct balance
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        await db.execute(
+            """
+            UPDATE users
+            SET balance = balance - ?
+            WHERE user_id = ?
+            """,
+            (amount, message.from_user.id)
+        )
+
+        await db.commit()
+
+    await message.answer(
+        f"✅ Withdrawal Request Submitted\n\n"
+        f"💰 Amount: {amount} Coins\n"
+        f"💵 USDT: ${usdt_amount}\n"
+        f"🏦 Method: {method}\n\n"
+        "⏳ Status: Pending",
+        reply_markup=get_main_menu()
+    )
+
+    await state.clear()
+
+
+# ================= CANCEL COMMAND =================
+
+@dp.message(Command("cancel"))
+async def cancel(message: types.Message, state: FSMContext):
+
+    await state.clear()
+
+    await message.answer(
+        "❌ Withdrawal cancelled.",
+        reply_markup=get_main_menu()
+    )
+
 
 # ================= MAIN =================
 
 async def main():
     await init_db()
-    print("Bot Started...")
+
+    print("✅ Bot Started Successfully")
+
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
