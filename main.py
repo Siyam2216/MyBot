@@ -57,7 +57,7 @@ def get_main_menu():
         [KeyboardButton(text="👤 Account"), KeyboardButton(text="👥 Refer & Earn")],
         [KeyboardButton(text="💳 Withdraw"), KeyboardButton(text="📈 Price Info")],
         [KeyboardButton(text="🏆 Leaderboard")]
-    ], resize_keyboard=True)
+    ], resize_keyboard=True, one_time_keyboard=False)
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
@@ -85,6 +85,8 @@ async def verify(callback: types.CallbackQuery):
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             await db.commit()
         await callback.message.answer("🎉 Congratulations! You received 200 coins!", reply_markup=get_main_menu(), parse_mode="Markdown")
+        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined!", parse_mode="Markdown")
+        except: pass
     else:
         await callback.answer("❌ Join both channels first!", show_alert=True)
 
@@ -147,6 +149,7 @@ async def show_leaderboard(message: types.Message):
 
 async def main():
     await init_db()
+    # Poll for messages
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
