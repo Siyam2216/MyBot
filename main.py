@@ -1,13 +1,10 @@
-import asyncio
-import aiosqlite
-import os
-import aiohttp
+import asyncio, aiosqlite, os, aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 
 # Configuration
 API_TOKEN = os.environ.get('API_TOKEN')
@@ -24,14 +21,14 @@ class WithdrawState(StatesGroup):
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users 
-                          (user_id INTEGER PRIMARY KEY, balance REAL, referred_by INTEGER)''')
+                          (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, referred_by INTEGER)''')
         await db.commit()
 
 async def send_to_sheet(user_id, username, referrals, method, address):
     if not WEB_APP_URL: return
     async with aiohttp.ClientSession() as session:
-        payload = {"user_id": user_id, "username": username, "referrals": referrals, "method": method, "address": address}
-        async with session.post(WEB_APP_URL, json=payload) as response:
+        params = {"user_id": user_id, "username": username, "referrals": referrals, "method": method, "address": address}
+        async with session.post(WEB_APP_URL, params=params) as response:
             return await response.text()
 
 def get_main_menu():
@@ -76,17 +73,23 @@ async def price(message: types.Message):
 
 @dp.message(F.text == "🏆 Leaderboard")
 async def leaderboard(message: types.Message):
-    await message.answer("🏆 Leaderboard: [Coming Soon]", reply_markup=get_back_button())
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
+        rows = await cur.fetchall()
+    text = "🏆 Top 5 Richest Users:\n" + "\n".join([f"{i+1}. ID: {r[0]} - {r[1]} Coins" for i, r in enumerate(rows)])
+    await message.answer(text, reply_markup=get_back_button())
 
 @dp.message(F.text == "💳 Withdraw")
 async def withdraw_start(message: types.Message, state: FSMContext):
-    kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], 
-        [KeyboardButton(text="Binance ID")],
-        [KeyboardButton(text="🔙 Back to Main Menu")]
-    ], resize_keyboard=True)
-    await message.answer("✅ Select payment method:\n⚠️ Note: Minimum withdrawal is 1000 Coins.", reply_markup=kb)
-    await state.set_state(WithdrawState.waiting_for_method)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
+        bal = (await cur.fetchone())[0]
+    if bal < 1000:
+        await message.answer(f"❌ Low balance! You need 1000 Coins. Your balance: {bal}")
+    else:
+        kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="USDT TRC20"), KeyboardButton(text="USDT BEP20")], [KeyboardButton(text="🔙 Back to Main Menu")]], resize_keyboard=True)
+        await message.answer(f"✅ Balance: {bal}\nMinimum withdrawal: 1000 Coins.\nSelect method:", reply_markup=kb)
+        await state.set_state(WithdrawState.waiting_for_method)
 
 @dp.message(WithdrawState.waiting_for_method)
 async def process_method(message: types.Message, state: FSMContext):
@@ -99,10 +102,7 @@ async def process_method(message: types.Message, state: FSMContext):
 async def process_address(message: types.Message, state: FSMContext):
     if message.text == "🔙 Back to Main Menu": return await back_to_menu(message, state)
     await state.update_data(address=message.text)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Yes, Confirm", callback_data="confirm_withdraw")],
-        [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_withdraw")]
-    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Yes, Confirm", callback_data="confirm_withdraw")], [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_withdraw")]])
     await message.answer(f"⚠️ Confirm address:\n{message.text}", reply_markup=kb)
 
 @dp.callback_query(F.data.in_(["confirm_withdraw", "cancel_withdraw"]))
