@@ -478,6 +478,20 @@ async def get_method(message: types.Message,
 async def get_address(message: types.Message,
                       state: FSMContext):
 
+                          try:
+    await bot.send_message(
+        "@USDT_GIVEAWAY_iii",
+        f"💸 New Withdrawal Request\n\n"
+        f"👤 User: @{message.from_user.username}\n"
+        f"🆔 ID: {message.from_user.id}\n"
+        f"💰 Amount: {amount} Coins\n"
+        f"💵 USDT: ${usdt_amount}\n"
+        f"🏦 Method: {method}\n"
+        f"⏳ Status: Pending"
+    )
+except:
+    pass
+
     data = await state.get_data()
 
     amount = data["amount"]
