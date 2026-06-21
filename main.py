@@ -73,12 +73,22 @@ async def start(message: types.Message):
 @dp.callback_query(F.data == "verify_join")
 async def verify(callback: types.CallbackQuery):
     user_id = callback.from_user.id
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] >= 200:
+                await callback.answer("❌ You have already claimed your bonus!", show_alert=True)
+                return
+
     if await check_subscription(user_id, CHANNEL_1) and await check_subscription(user_id, CHANNEL_2):
         await callback.message.delete()
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE users SET balance = balance + 200 WHERE user_id = ?", (user_id,))
             await db.commit()
         await callback.message.answer("🎉 Congratulations! You received 200 coins!", reply_markup=get_main_menu(), parse_mode="Markdown")
+        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined!", parse_mode="Markdown")
+        except: pass
     else:
         await callback.answer("❌ Join both channels first!", show_alert=True)
 
