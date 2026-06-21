@@ -86,10 +86,10 @@ async def withdraw_start(message: types.Message, state: FSMContext):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
         bal = (await cur.fetchone())[0]
-    if bal < 1000:
-        await message.answer(f"❌ Low balance! You need 1000 Coins. Your balance: {bal}")
+    if bal < 10:
+        await message.answer(f"❌ Low balance! You need at least 10 Coins. Your balance: {bal}")
     else:
-        await message.answer(f"✅ Your balance: {bal}\nEnter amount to withdraw (Min 1000):", reply_markup=get_back_button())
+        await message.answer(f"✅ Your balance: {bal}\nEnter amount to withdraw (Min 10):", reply_markup=get_back_button())
         await state.set_state(WithdrawState.waiting_for_amount)
 
 @dp.message(WithdrawState.waiting_for_amount)
@@ -97,7 +97,7 @@ async def process_amount(message: types.Message, state: FSMContext):
     if message.text == "🔙 Back to Main Menu": return await back_to_menu(message, state)
     try:
         amount = float(message.text)
-        if amount < 1000: return await message.answer("❌ Minimum 1000!")
+        if amount < 10: return await message.answer("❌ Minimum 10 Coins!")
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute("SELECT balance FROM users WHERE user_id=?", (message.from_user.id,))
             if amount > (await cur.fetchone())[0]: return await message.answer("❌ Insufficient balance!")
