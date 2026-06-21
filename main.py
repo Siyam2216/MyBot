@@ -9,7 +9,6 @@ from aiogram.exceptions import TelegramBadRequest
 API_TOKEN = os.environ.get('API_TOKEN')
 CHANNEL_1 = "@USDT_GIVEAWAY_ii"
 CHANNEL_2 = "@USDT_GIVEAWAY_iii"
-# অটো-পোস্টের জন্য চ্যানেলের ইউজারনেম
 CHANNEL_ID = "@USDT_GIVEAWAY_iii"
 DB_PATH = "/var/data/bot_data.db"
 
@@ -93,12 +92,30 @@ async def price(message: types.Message):
 
 @dp.message(F.text == "🏆 Leaderboard")
 async def show_leaderboard(message: types.Message):
+    user_id = message.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT referred_by, COUNT(*) as count FROM users WHERE referred_by IS NOT NULL GROUP BY referred_by ORDER BY count DESC LIMIT 10")
-        rows = await cursor.fetchall()
+        top_rows = await cursor.fetchall()
+        
+        all_users = await db.execute("SELECT referred_by, COUNT(*) as count FROM users WHERE referred_by IS NOT NULL GROUP BY referred_by ORDER BY count DESC")
+        all_ranks = await all_users.fetchall()
+        
+        user_rank = 0
+        user_ref_count = 0
+        for i, (ref_id, count) in enumerate(all_ranks, 1):
+            if ref_id == user_id:
+                user_rank = i
+                user_ref_count = count
+                break
+    
     text = "🏆 **Top 10 Referrers Leaderboard:**\n\n"
-    for i, (ref_id, count) in enumerate(rows, 1):
+    for i, (ref_id, count) in enumerate(top_rows, 1):
         text += f"{i}. User `{ref_id}` — {count} Referrals\n"
+    text += "\n--------------------------\n"
+    if user_rank > 0:
+        text += f"📍 **Your Rank:** {user_rank} | **Your Referrals:** {user_ref_count}"
+    else:
+        text += "📍 **Your Rank:** Not ranked yet (0 referrals)"
     await message.answer(text, parse_mode="Markdown")
 
 @dp.callback_query(F.data == "verify_join")
@@ -123,8 +140,7 @@ async def verify(callback: types.CallbackQuery):
                 try: await bot.send_message(referrer_id, "🎉 Congratulations! You received 100 coins bonus from a referral.")
                 except: pass
             await db.commit()
-        # অটো পোস্ট
-        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined and started earning! Join now: @{(await bot.get_me()).username}")
+        try: await bot.send_message(CHANNEL_ID, f"🎉 **New User Verified!**\nUser ID: `{user_id}` has joined! Join us: @{(await bot.get_me()).username}")
         except: pass
         await callback.message.answer("🎉 Congratulations! You received 200 coins as a welcome bonus!", reply_markup=get_main_menu())
     else:
