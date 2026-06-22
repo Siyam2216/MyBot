@@ -482,17 +482,17 @@ async def get_amount(message: types.Message,
                          # ================= GET METHOD =================
 
     @dp.message(WithdrawState.method)
-    async def get_method(message: types.Message,
-                         state: FSMContext):
-                             
+async def get_method(message: types.Message,
+                     state: FSMContext):
+
     if message.text == "❌ Cancel Withdraw":
 
         await state.clear()
 
         return await message.answer(
-        "❌ Withdrawal Cancelled.",
-        reply_markup=get_main_menu()
-    )                         
+            "❌ Withdrawal Cancelled.",
+            reply_markup=get_main_menu()
+        )
 
     methods = [
         "USDT BEP20",
