@@ -324,7 +324,7 @@ async def price_info(message: types.Message):
 
     balance = row[0] if row else 0
 
-    if balance >= 2000:
+    if balance >= 500:
         price = "$0.01"
     else:
         price = random.choice([
@@ -337,7 +337,7 @@ async def price_info(message: types.Message):
     await message.answer(
         "📈 Coin Price Information\n\n"
         f"💵 100 Coins = {price}\n\n"
-        "💳 Minimum Withdraw: 2000 Coins\n\n"
+        "💳 Minimum Withdraw: 500 Coins\n\n"
         "⚠️ Rates may change anytime.",
         reply_markup=get_main_menu()
     )
@@ -395,9 +395,9 @@ async def withdraw(message: types.Message, state: FSMContext):
 
     balance = row[0] if row else 0
 
-    if balance < 2000:
+    if balance < 500:
         return await message.answer(
-            f"❌ Minimum Withdraw: 2000 Coins\n\n"
+            f"❌ Minimum Withdraw: 500 Coins\n\n"
             f"💰 Your Balance: {balance} Coins"
         )
 
@@ -427,10 +427,10 @@ async def get_amount(message: types.Message,
 
     amount = int(message.text)
 
-    if amount < 2000:
+    if amount < 500:
 
         return await message.answer(
-            "❌ Minimum withdraw is 2000 Coins."
+            "❌ Minimum withdraw is 500 Coins."
         )
 
     async with aiosqlite.connect(DB_PATH) as db:
