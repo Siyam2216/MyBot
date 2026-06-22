@@ -413,6 +413,8 @@ async def withdraw(message: types.Message, state: FSMContext):
         "Enter withdrawal amount:",
         reply_markup=cancel_kb
     )
+    
+    await state.set_state(WithdrawState.amount)
 # ================= GET AMOUNT =================
 
 @dp.message(WithdrawState.amount)
