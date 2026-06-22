@@ -483,8 +483,8 @@ async def get_amount(message: types.Message,
     )
                          # ================= GET METHOD =================
 
-    @dp.message(WithdrawState.method)
-    async def get_method(message: types.Message,
+@dp.message(WithdrawState.method)
+async def get_method(message: types.Message,
                      state: FSMContext):
 
         if message.text == "❌ Cancel Withdraw":
