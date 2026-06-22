@@ -470,7 +470,7 @@ async def get_amount(message: types.Message,
     await state.set_state(
         WithdrawState.method
     )   
-    )
+                         
     await message.answer(
         "Choose withdrawal method:",
         reply_markup=kb
