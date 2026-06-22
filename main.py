@@ -12,7 +12,8 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    ReplyKeyboardRemove
 )
 
 # ================= CONFIG =================
@@ -380,9 +381,10 @@ async def withdraw(message: types.Message, state: FSMContext):
         )
 
     await message.answer(
-        f"💰 Your Balance: {balance} Coins\n\n"
-        "Enter withdrawal amount:"
-    )
+    f"💰 Your Balance: {balance} Coins\n\n"
+    "Enter withdrawal amount:",
+    reply_markup=ReplyKeyboardRemove()
+)
 
     await state.set_state(WithdrawState.amount)
 
@@ -470,7 +472,10 @@ async def get_method(message: types.Message,
     else:
         txt = "Send your wallet address:"
 
-    await message.answer(txt)
+   await message.answer(
+    txt,
+    reply_markup=ReplyKeyboardRemove()
+)
 
     await state.set_state(
         WithdrawState.address
