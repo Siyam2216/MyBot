@@ -458,8 +458,8 @@ async def get_amount(message: types.Message,
         [KeyboardButton(text="USDT TRC20")],
         [KeyboardButton(text="Binance ID")],
         [KeyboardButton(text="❌ Cancel Withdraw")]
-    ],
-    resize_keyboard=True
+        ],
+        resize_keyboard=True
 
     await message.answer(
         "Choose withdrawal method:",
