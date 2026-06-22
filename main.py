@@ -28,7 +28,7 @@ CHANNELS = [
     "@USDT_GIVEAWAY_iii"
 ]
 
-DB_PATH = "bot_data.db"
+DB_PATH = "/var/data/bot_data.db"
 
 # ================= BOT =================
 
