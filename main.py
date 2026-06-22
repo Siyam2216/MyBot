@@ -485,44 +485,44 @@ async def get_amount(message: types.Message,
     async def get_method(message: types.Message,
                      state: FSMContext):
 
-    if message.text == "❌ Cancel Withdraw":
+        if message.text == "❌ Cancel Withdraw":
 
-        await state.clear()
+            await state.clear()
 
-        return await message.answer(
-            "❌ Withdrawal Cancelled.",
-            reply_markup=get_main_menu()
+            return await message.answer(
+                "❌ Withdrawal Cancelled.",
+                reply_markup=get_main_menu()
+            )
+
+        methods = [
+            "USDT BEP20",
+            "USDT TRC20",
+            "Binance ID"
+        ]
+
+        if message.text not in methods:
+
+            return await message.answer(
+                "❌ Please select a valid method."
+            )
+
+        await state.update_data(
+            method=message.text
         )
 
-    methods = [
-        "USDT BEP20",
-        "USDT TRC20",
-        "Binance ID"
-    ]
+        if message.text == "Binance ID":
+            txt = "Enter your Binance Pay ID:"
+        else:
+            txt = "Send your wallet address:"
 
-    if message.text not in methods:
-
-        return await message.answer(
-            "❌ Please select a valid method."
+        await message.answer(
+            txt,
+            reply_markup=ReplyKeyboardRemove()
         )
 
-    await state.update_data(
-        method=message.text
-    )
-
-    if message.text == "Binance ID":
-        txt = "Enter your Binance Pay ID:"
-    else:
-        txt = "Send your wallet address:"
-
-    await message.answer(
-        txt,
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-    await state.set_state(
-        WithdrawState.address
-    )
+        await state.set_state(
+            WithdrawState.address
+        )
 
 
 # ================= GET ADDRESS =================
