@@ -15,7 +15,6 @@ from aiogram.types import (
     InlineKeyboardButton,
     ReplyKeyboardRemove
 )
-
 # ================= CONFIG =================
 
 API_TOKEN = os.getenv("API_TOKEN")
@@ -472,10 +471,10 @@ async def get_method(message: types.Message,
     else:
         txt = "Send your wallet address:"
 
-   await message.answer(
-    txt,
-    reply_markup=ReplyKeyboardRemove()
-)
+    await message.answer(
+        txt,
+        reply_markup=ReplyKeyboardRemove()
+    )
 
     await state.set_state(
         WithdrawState.address
