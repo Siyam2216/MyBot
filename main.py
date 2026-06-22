@@ -401,15 +401,18 @@ async def withdraw(message: types.Message, state: FSMContext):
             f"💰 Your Balance: {balance} Coins"
         )
 
+    cancel_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="❌ Cancel Withdraw")]
+        ],
+        resize_keyboard=True
+    )
+
     await message.answer(
-    f"💰 Your Balance: {balance} Coins\n\n"
-    "Enter withdrawal amount:",
-    reply_markup=ReplyKeyboardRemove()
-)
-
-    await state.set_state(WithdrawState.amount)
-
-
+        f"💰 Your Balance: {balance} Coins\n\n"
+        "Enter withdrawal amount:",
+        reply_markup=cancel_kb
+    )
 # ================= GET AMOUNT =================
 
 @dp.message(WithdrawState.amount)
@@ -449,7 +452,7 @@ async def get_amount(message: types.Message,
 
     await state.update_data(amount=amount)
 
-   kb = ReplyKeyboardMarkup(
+    kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="USDT BEP20")],
         [KeyboardButton(text="USDT TRC20")],
@@ -457,16 +460,15 @@ async def get_amount(message: types.Message,
         [KeyboardButton(text="❌ Cancel Withdraw")]
     ],
     resize_keyboard=True
-)
-@dp.message(F.text == "❌ Cancel Withdraw")
-async def cancel_withdraw(message: types.Message,
-                          state: FSMContext):
-
-    await state.clear()
 
     await message.answer(
-        "❌ Withdrawal cancelled.",
-        reply_markup=get_main_menu()
+        "Choose withdrawal method:",
+        reply_markup=kb
+    )
+
+    await state.set_state(
+        WithdrawState.method
+    )   
     )
     await message.answer(
         "Choose withdrawal method:",
@@ -481,6 +483,14 @@ async def cancel_withdraw(message: types.Message,
 @dp.message(WithdrawState.method)
 async def get_method(message: types.Message,
                      state: FSMContext):
+if message.text == "❌ Cancel Withdraw":
+
+    await state.clear()
+
+    return await message.answer(
+        "❌ Withdrawal Cancelled.",
+        reply_markup=get_main_menu()
+    )                         
 
     methods = [
         "USDT BEP20",
@@ -573,7 +583,16 @@ async def get_address(message: types.Message,
     )
 
     await state.clear()
+    @dp.message(F.text == "❌ Cancel Withdraw")
+    async def cancel_withdraw(message: types.Message,
+        state: FSMContext):
 
+    await state.clear()
+
+    await message.answer(
+        "❌ Withdrawal cancelled.",
+        reply_markup=get_main_menu()
+    )
 
 # ================= CANCEL =================
 
