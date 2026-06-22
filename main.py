@@ -28,7 +28,7 @@ CHANNELS = [
     "@USDT_GIVEAWAY_iii"
 ]
 
-DB_PATH = "/var/data/bot_data.db"
+DB_PATH = "bot_data.db"
 
 # ================= BOT =================
 
@@ -309,13 +309,35 @@ async def refer(message: types.Message):
     )
     # ================= PRICE INFO =================
 
+import random
 @dp.message(F.text == "📈 Price Info")
 async def price_info(message: types.Message):
 
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cur = await db.execute(
+            "SELECT balance FROM users WHERE user_id=?",
+            (message.from_user.id,)
+        )
+
+        row = await cur.fetchone()
+
+    balance = row[0] if row else 0
+
+    if balance >= 2000:
+        price = "$0.01"
+    else:
+        price = random.choice([
+            "$0.01",
+            "$0.10",
+            "$0.30",
+            "$0.50"
+        ])
+
     await message.answer(
         "📈 Coin Price Information\n\n"
-        "💵 100 Coins = $0.01\n\n"
-        "💳 Minimum Withdraw: 10 Coins\n\n"
+        f"💵 100 Coins = {price}\n\n"
+        "💳 Minimum Withdraw: 2000 Coins\n\n"
         "⚠️ Rates may change anytime.",
         reply_markup=get_main_menu()
     )
@@ -373,9 +395,9 @@ async def withdraw(message: types.Message, state: FSMContext):
 
     balance = row[0] if row else 0
 
-    if balance < 10:
+    if balance < 2000:
         return await message.answer(
-            f"❌ Minimum Withdraw: 10 Coins\n\n"
+            f"❌ Minimum Withdraw: 2000 Coins\n\n"
             f"💰 Your Balance: {balance} Coins"
         )
 
@@ -402,10 +424,10 @@ async def get_amount(message: types.Message,
 
     amount = int(message.text)
 
-    if amount < 10:
+    if amount < 2000:
 
         return await message.answer(
-            "❌ Minimum withdraw is 10 Coins."
+            "❌ Minimum withdraw is 2000 Coins."
         )
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -427,15 +449,25 @@ async def get_amount(message: types.Message,
 
     await state.update_data(amount=amount)
 
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="USDT BEP20")],
-            [KeyboardButton(text="USDT TRC20")],
-            [KeyboardButton(text="Binance ID")]
-        ],
-        resize_keyboard=True
-    )
+   kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="USDT BEP20")],
+        [KeyboardButton(text="USDT TRC20")],
+        [KeyboardButton(text="Binance ID")],
+        [KeyboardButton(text="❌ Cancel Withdraw")]
+    ],
+    resize_keyboard=True
+)
+@dp.message(F.text == "❌ Cancel Withdraw")
+async def cancel_withdraw(message: types.Message,
+                          state: FSMContext):
 
+    await state.clear()
+
+    await message.answer(
+        "❌ Withdrawal cancelled.",
+        reply_markup=get_main_menu()
+    )
     await message.answer(
         "Choose withdrawal method:",
         reply_markup=kb
