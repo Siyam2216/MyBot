@@ -586,15 +586,15 @@ async def get_address(message: types.Message,
 
     await state.clear()
     @dp.message(F.text == "❌ Cancel Withdraw")
-    async def cancel_withdraw(message: types.Message,
-        state: FSMContext):
+        async def cancel_withdraw(message: types.Message,
+            state: FSMContext):
 
-    await state.clear()
+        await state.clear()
 
-    await message.answer(
-        "❌ Withdrawal cancelled.",
-        reply_markup=get_main_menu()
-    )
+        await message.answer(
+            "❌ Withdrawal cancelled.",
+            reply_markup=get_main_menu()
+        )
 
 # ================= CANCEL =================
 
